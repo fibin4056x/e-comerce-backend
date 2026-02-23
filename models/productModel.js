@@ -16,6 +16,7 @@ const productSchema= new mongoose.Schema({
     reviews:{type:Number,dafault:0},
     discount:{type:Number,default:0},
     isFeatured:{type:Boolean,default:false},
+    countInStock:{type:Number,required:true,default:0,},
     isNewArrival:{type:Boolean,default:false}
 
 

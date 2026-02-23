@@ -10,7 +10,13 @@ const addToCart = async (req, res) => {
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
-
+    const qty= quantity||1;
+   //stock check before adding
+   if(qty >product.stock){
+    return res.status(400).json({
+      message: `Only ${product.stock} items available in stock`,
+    })
+   }
     let cart = await Cart.findOne({ user: req.user._id });
 
     if (!cart) {
@@ -24,9 +30,16 @@ const addToCart = async (req, res) => {
       );
 
       if (itemIndex > -1) {
-        cart.items[itemIndex].quantity += quantity || 1;
+      const newQuantity=  cart.items[itemIndex].quantity +qty;
+
+       //check again if updating
+       if(newQuantity>product.stock){
+        return res.status(400).json({
+          message:`Only ${product.stock} items available in stock`,
+        })
+       }
       } else {
-        cart.items.push({ product: productId, quantity: quantity || 1 });
+        cart.items.push({ product: productId, quantity: qty});
       }
 
       await cart.save();
@@ -63,28 +76,35 @@ const getUserCart = async (req, res) => {
 };
 
 // 🔹 Update Quantity
-const updateCartItem = async (req, res) => {
-  try {
-    const { productId, quantity } = req.body;
+const updateCartItem=async(req,res)=>{
+  try{
+    const {productId,quantity}=req.body;
 
-    const cart = await Cart.findOne({ user: req.user._id });
+    const cart =await Cart.findOne({user:req.user._id});
+    const  product =await Product.findById(productId);
 
-    if (!cart) return res.status(404).json({ message: "Cart not found" });
+    if(!product){
+      return res.status(404).json({message:"product not found"});
+    }
+    if(!product){
+      return res.status(404).json({message: 'Product not found'})
+    }
+    if (quantity > product.stock){
+      return res.status(400).json({message:`Only ${product.stock} items available in stock`});
+    }
 
-    const itemIndex = cart.items.findIndex(
-      (item) => item.product.toString() === productId
+    const itemIndex =cart.items.findIndex(
+      (item)=>item.product.toString()=== productId
     );
 
-    if (itemIndex === -1)
-      return res.status(404).json({ message: "Product not in cart" });
-
-    cart.items[itemIndex].quantity = quantity;
-
+    if(itemIndex===1){
+      return res.status(404).json({message:"Product not in cart"});
+    }
+    cart.items[itemIndex].quantity =quantity;
     await cart.save();
-
     res.json(cart);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+  }catch(error){
+    res.status(500).json({message:error.message})
   }
 };
 

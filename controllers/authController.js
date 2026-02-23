@@ -58,5 +58,19 @@ const loginUser = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+//  varficatiob login
 
-module.exports = { registerUser, loginUser };
+const getUserProfile =async (req,res)=>{
+  try{
+    res.json({
+      _id:req.user._id,
+      username:req.user.username,
+      email:req.user.email,
+      role:req.user.role,
+    });
+  }catch(error){
+    res.status(500).json({message:error.message});
+  }
+};
+
+module.exports = { registerUser, loginUser ,getUserProfile};
