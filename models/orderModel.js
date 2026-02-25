@@ -1,47 +1,69 @@
-const mongoose =require("mongoose");
+const mongoose = require("mongoose");
 
-const orderItemShema =new mongoose.Schema({
-    product:{
-        type:mongoose.Schema.Types.ObjectId,
-        ref:"Product",
-        required:true,
-    },
-    name:String,
-    quantity:Number,
-    price:Number,
-});
+const orderItemSchema = new mongoose.Schema({
+  product: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Product",
+    required: true
+  },
+  name: {
+    type: String,
+    required: true
+  },
+  image: {
+    type: String
+  },
+  size: {
+    type: String,
+    required: true
+  },
+  color: {
+    type: String,
+    required: true
+  },
+  quantity: {
+    type: Number,
+    required: true,
+    min: 1
+  },
+  price: {
+    type: Number,
+    required: true
+  }
+}, { _id: false });
 
-const ordersChema =new mongoose.Schema({
-    user:{
-        type:mongoose.Types.ObjectId,
-        ref:"User",
-        require:true,
+const orderSchema = new mongoose.Schema({
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true
+  },
+  orderItems: [orderItemSchema],
 
-    },
-    orderItems:[orderItemShema],
-    shippingAddress:{
-        address:String,
-        city:String,
-        postalCode:String,
-        country:String,
-    },
+  shippingAddress: {
+    address: { type: String, required: true },
+    city: { type: String, required: true },
+    postalCode: { type: String, required: true },
+    country: { type: String, required: true }
+  },
 
-    totalPrice:{
-        type:Number,
-        required:true,
-    },
-    isPaid:{
-        type:Boolean,
-        default:false,
-    },
-    paidAt:Date,
-    isDelivered:{
-        type:Boolean,
-        default:false
-    },
-    deliveredAt:Date,
+  totalPrice: {
+    type: Number,
+    required: true
+  },
 
+  isPaid: {
+    type: Boolean,
+    default: false
+  },
+  paidAt: Date,
 
-},{timestamps:true});
+  isDelivered: {
+    type: Boolean,
+    default: false
+  },
+  deliveredAt: Date
 
-module.exports =mongoose.model("Order",ordersChema);
+}, { timestamps: true });
+
+module.exports = mongoose.model("Order", orderSchema);

@@ -13,24 +13,42 @@ const registerUser = async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
+    if (!username || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "All fields are required",
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters",
+      });
+    }
+
     const userExists = await User.findOne({ email });
+
     if (userExists) {
-      return res.status(400).json({ message: "User already exists" });
+      return res.status(400).json({
+        success: false,
+        message: "User already exists",
+      });
     }
 
     const user = await User.create({ username, email, password });
 
-    res.status(201).json({
-      _id: user._id,
-      username: user.username,
-      email: user.email,
-      role: user.role,
-      token: generateToken(user._id),
+    return res.status(201).json({
+      success: true,
+      message: "Registration successful",
     });
 
   } catch (error) {
-    console.error("AUTH ERROR:", error);
-    res.status(500).json({ message: error.message });
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
   }
 };
 

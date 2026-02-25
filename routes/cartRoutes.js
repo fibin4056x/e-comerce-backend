@@ -11,6 +11,6 @@ const {
 router.post("/", protect, addToCart);
 router.get("/", protect, getUserCart);
 router.put("/", protect, updateCartItem);
-router.delete("/:productId", protect, removeCartItem);
+router.delete("/:productId/:size/:color", protect, removeCartItem);
 
 module.exports = router;

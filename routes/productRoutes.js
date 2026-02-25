@@ -6,7 +6,7 @@ const {protect,admin}= require("../middleware/authMiddleware")
 //Get all products
 router.get("/",getProducts);
 //GEt products by id
-router.get("/:id",protect,getProductsbyId)
+router.get("/:id",getProductsbyId)
 //CREATE new product
 router.post("/", protect, admin ,createProduct);
 //update product

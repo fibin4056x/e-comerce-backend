@@ -1,12 +1,26 @@
 const Product =require("../models/productModel");
 //GET all product
-const getProducts=async (req,res) => {
-    try {
-        const products= await Product.find();
-        res.status(200).json(products);
-    } catch (error) {
-        res.status(500).json({message:error.message});
+const getProducts = async (req, res) => {
+  try {
+    const { category } = req.query;
+
+    let filter = {};
+
+    if (category) {
+      filter.category = new RegExp(`^${category}$`, "i"); // case-insensitive
     }
+
+    console.log("🔍 Filter:", filter);
+
+    const products = await Product.find(filter);
+
+    console.log("✅ Products found:", products.length);
+
+    res.status(200).json(products);
+  } catch (error) {
+    console.error("🔥 Product Fetch Error:", error);
+    res.status(500).json({ message: error.message });
+  }
 };
 
 //get  product by id
