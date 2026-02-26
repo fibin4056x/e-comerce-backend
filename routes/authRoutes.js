@@ -1,14 +1,57 @@
-const express =require("express");
+const express = require("express");
 const router = express.Router();
-const { registerUser, loginUser, getUserProfile } = require("../controllers/authController");
-const {validateRegister,validateLogin}=require("../middleware/validateUser");
-const {protect}=require("../middleware/authMiddleware")
-//register
-router.post("/register",validateRegister, registerUser);
 
-//login
-router.post("/login",validateLogin, loginUser);
+const {
+  registerUser,
+  verifyRegisterOTP,
+  loginUser,
+  requestLoginOTP,
+  verifyLoginOTP,
+  logoutUser,
+  getUserProfile,
+} = require("../controllers/authController");
 
-//profile
-router.get("/profile",protect,getUserProfile)
-module.exports=router;
+const {
+  validateRegister,
+  validateLogin,
+  validateOTP
+} = require("../middleware/validateUser");
+
+const { protect } = require("../middleware/authMiddleware");
+
+/* =========================
+   REGISTER
+========================= */
+router.post("/register", validateRegister, registerUser);
+
+/* =========================
+   VERIFY REGISTRATION OTP
+========================= */
+router.post("/verify-register", validateOTP, verifyRegisterOTP);
+
+/* =========================
+   PASSWORD LOGIN
+========================= */
+router.post("/login", validateLogin, loginUser);
+
+/* =========================
+   REQUEST LOGIN OTP
+========================= */
+router.post("/request-login-otp", validateLogin, requestLoginOTP);
+
+/* =========================
+   VERIFY LOGIN OTP
+========================= */
+router.post("/verify-login-otp", validateOTP, verifyLoginOTP);
+
+/* =========================
+   LOGOUT
+========================= */
+router.post("/logout", logoutUser);
+
+/* =========================
+   PROFILE (PROTECTED)
+========================= */
+router.get("/profile", protect, getUserProfile);
+
+module.exports = router;

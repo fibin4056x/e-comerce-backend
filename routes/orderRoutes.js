@@ -7,6 +7,6 @@ const {
 }=require("../controllers/orderController");
 
 router.post("/",protect,createOrder);
-router.get('/myorders', protect,getmyOrders);
+router.get('/', protect,getmyOrders);
 
 module.exports=router;

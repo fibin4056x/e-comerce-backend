@@ -36,16 +36,65 @@ const getProductsbyId=async(req,res)=>{
 
 //create products
 
-const createProduct= async (req,res)=>{
-    try{
-        const product =await Product.create(req.body);
-        res.status(201).json(product);
-    }catch(error){
-        res.status(500).json({message:error.message});
-    };
+const createProduct = async (req, res, next) => {
+  try {
+    console.log("📦 Incoming product data:", req.body);
 
-}
+    // Validate required fields
+    if (!req.body.name || !req.body.price) {
+      return res.status(400).json({
+        message: "Name and price are required",
+      });
+    }
 
+    // Handle image uploads safely
+    let imagePaths = [];
+
+    if (req.files && req.files.length > 0) {
+      imagePaths = req.files.map(
+        (file) => `/uploads/${file.filename}`
+      );
+    }
+
+    // Parse variants safely (because sent as JSON string from frontend)
+    let parsedVariants = [];
+
+    if (req.body.variants) {
+      try {
+        parsedVariants = JSON.parse(req.body.variants);
+      } catch (err) {
+        return res.status(400).json({
+          message: "Invalid variants format",
+        });
+      }
+    }
+
+    const product = new Product({
+      name: req.body.name,
+      brand: req.body.brand,
+      category: req.body.category,
+      type: req.body.type,
+      description: req.body.description,
+      price: Number(req.body.price),
+      originalPrice: Number(req.body.originalPrice) || 0,
+      discount: Number(req.body.discount) || 0,
+      isFeatured: req.body.isFeatured === "true",
+      isNewArrival: req.body.isNewArrival === "true",
+      images: imagePaths,
+      variants: parsedVariants,
+    });
+
+    const savedProduct = await product.save();
+
+    console.log("✅ Product created:", savedProduct._id);
+
+    res.status(201).json(savedProduct);
+
+  } catch (error) {
+    console.error("❌ Create Product Error:", error.message);
+    next(error); // send to global error handler
+  }
+};
 //updateproduct
 
 const updateProduct = async (req, res) => {

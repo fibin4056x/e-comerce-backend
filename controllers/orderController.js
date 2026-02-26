@@ -11,16 +11,69 @@ const createOrder = async (req, res) => {
   try {
     console.log("➡ USER:", req.user?._id);
     console.log("➡ BODY:", req.body);
+const { shippingAddress } = req.body;
 
-    const { shippingAddress } = req.body;
+if (!shippingAddress) {
+  return res.status(400).json({
+    message: "Shipping address is required",
+  });
+}
 
-    if (!shippingAddress) {
-      console.log("❌ Shipping address missing");
-      return res.status(400).json({
-        message: "Shipping address required",
-      });
-    }
+const { address, city, postalCode, country } = shippingAddress;
 
+// ADDRESS VALIDATION
+if (
+  !address ||
+  address.trim().length < 10 ||
+  address.trim().length > 200
+) {
+  return res.status(400).json({
+    message: "Address must be between 10 and 200 characters",
+  });
+}
+
+// Prevent numeric-only address
+if (/^[0-9\s]+$/.test(address.trim())) {
+  return res.status(400).json({
+    message: "Address cannot be only numbers",
+  });
+}
+
+// CITY VALIDATION
+if (
+  !city ||
+  !/^[a-zA-Z\s]{2,50}$/.test(city.trim())
+) {
+  return res.status(400).json({
+    message: "Enter a valid city name",
+  });
+}
+
+// COUNTRY VALIDATION
+const allowedCountries = ["India", "USA", "UK", "Canada"];
+if (!allowedCountries.includes(country)) {
+  return res.status(400).json({
+    message: "Invalid country selection",
+  });
+}
+
+// POSTAL CODE VALIDATION (India Example)
+if (country === "India") {
+  if (!/^[0-9]{6}$/.test(postalCode)) {
+    return res.status(400).json({
+      message: "Indian postal code must be 6 digits",
+    });
+  }
+}
+
+// USA Example
+if (country === "USA") {
+  if (!/^[0-9]{5}(-[0-9]{4})?$/.test(postalCode)) {
+    return res.status(400).json({
+      message: "Invalid US ZIP code",
+    });
+  }
+}
     const cart = await Cart.findOne({
       user: req.user._id,
     }).populate("items.product");
