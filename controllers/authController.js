@@ -3,15 +3,34 @@ const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 
 /* =========================
-   GENERATE JWT COOKIE
+   TOKEN GENERATORS
 ========================= */
 
-const generateToken = (res, id) => {
-  const token = jwt.sign({ id }, process.env.JWT_SECRET, {
+const generateAccessToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET, {
+    expiresIn: "15m",
+  });
+};
+
+const generateRefreshToken = (id) => {
+  if (!process.env.JWT_REFRESH_SECRET) {
+    throw new Error("JWT_REFRESH_SECRET is not defined");
+  }
+
+  return jwt.sign({ id }, process.env.JWT_REFRESH_SECRET, {
     expiresIn: "30d",
   });
+};
 
-  res.cookie("token", token, {
+const setAuthCookies = (res, accessToken, refreshToken) => {
+  res.cookie("accessToken", accessToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    maxAge: 15 * 60 * 1000,
+  });
+
+  res.cookie("refreshToken", refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
@@ -20,7 +39,7 @@ const generateToken = (res, id) => {
 };
 
 /* =========================
-   GENERATE 6 DIGIT OTP
+   GENERATE OTP
 ========================= */
 
 const generateOTP = () => {
@@ -35,10 +54,8 @@ const registerUser = async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
-    console.log("📩 REGISTER:", email);
-
     if (!username || !email || !password) {
-      return res.status(400).json({ message: "All fields are required" });
+      return res.status(400).json({ message: "All fields required" });
     }
 
     const existing = await User.findOne({ email });
@@ -60,39 +77,34 @@ const registerUser = async (req, res) => {
     user.otpExpires = Date.now() + 5 * 60 * 1000;
     await user.save();
 
-    console.log("🔐 REGISTER OTP:", otp);
+    console.log("REGISTER OTP:", otp);
 
     res.status(201).json({
       message: "Registration successful. Verify OTP.",
     });
 
-  } catch (error) {
-    console.error("❌ REGISTER ERROR:", error);
+  } catch {
     res.status(500).json({ message: "Server error" });
   }
 };
 
 /* =========================
-   VERIFY REGISTRATION OTP
+   VERIFY REGISTER OTP
 ========================= */
 
 const verifyRegisterOTP = async (req, res) => {
+  console.log("🔥 verifyRegisterOTP controller reached");
   try {
     const { email, otp } = req.body;
 
     const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    if (!user.otp || user.otpExpires < Date.now()) {
+    if (!user.otp || user.otpExpires < Date.now())
       return res.status(400).json({ message: "OTP expired" });
-    }
 
-    if (user.otpAttempts >= 5) {
-      return res.status(403).json({ message: "Too many failed attempts" });
-    }
+    if (user.otpAttempts >= 5)
+      return res.status(403).json({ message: "Too many attempts" });
 
     const valid = await user.verifyOTP(otp);
 
@@ -106,9 +118,18 @@ const verifyRegisterOTP = async (req, res) => {
     user.otp = undefined;
     user.otpExpires = undefined;
     user.otpAttempts = 0;
+
+    const accessToken = generateAccessToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+
+    user.refreshToken = crypto
+      .createHash("sha256")
+      .update(refreshToken)
+      .digest("hex");
+
     await user.save();
 
-    generateToken(res, user._id);
+    setAuthCookies(res, accessToken, refreshToken);
 
     res.json({
       message: "Account verified",
@@ -118,43 +139,48 @@ const verifyRegisterOTP = async (req, res) => {
       role: user.role,
     });
 
-  } catch (error) {
-    console.error("❌ VERIFY REGISTER OTP ERROR:", error);
+  } catch {
     res.status(500).json({ message: "Server error" });
   }
 };
 
 /* =========================
-   LOGIN (PASSWORD)
+   PASSWORD LOGIN
 ========================= */
 
 const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    console.log("🔑 LOGIN:", email);
-
     const user = await User.findOne({ email });
 
-    if (!user || !(await user.matchPassword(password))) {
+    if (!user || !(await user.matchPassword(password)))
       return res.status(401).json({ message: "Invalid credentials" });
-    }
 
-    if (!user.isVerified) {
+    if (!user.isVerified)
       return res.status(403).json({ message: "Account not verified" });
-    }
 
-    generateToken(res, user._id);
+    const accessToken = generateAccessToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+
+    user.refreshToken = crypto
+      .createHash("sha256")
+      .update(refreshToken)
+      .digest("hex");
+
+    await user.save();
+
+    setAuthCookies(res, accessToken, refreshToken);
 
     res.json({
+      message: "Login successful",
       _id: user._id,
       username: user.username,
       email: user.email,
       role: user.role,
     });
 
-  } catch (error) {
-    console.error("❌ LOGIN ERROR:", error);
+  } catch {
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -168,28 +194,24 @@ const requestLoginOTP = async (req, res) => {
     const { email } = req.body;
 
     const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    if (!user.isVerified) {
+    if (!user.isVerified)
       return res.status(403).json({ message: "Account not verified" });
-    }
 
     const otp = generateOTP();
 
     user.otp = await user.hashOTP(otp);
     user.otpExpires = Date.now() + 5 * 60 * 1000;
     user.otpAttempts = 0;
+
     await user.save();
 
-    console.log("🔐 LOGIN OTP:", otp);
+    console.log("LOGIN OTP:", otp);
 
     res.json({ message: "OTP sent successfully" });
 
-  } catch (error) {
-    console.error("❌ REQUEST LOGIN OTP ERROR:", error);
+  } catch {
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -203,18 +225,14 @@ const verifyLoginOTP = async (req, res) => {
     const { email, otp } = req.body;
 
     const user = await User.findOne({ email });
-
-    if (!user || !user.otp) {
+    if (!user || !user.otp)
       return res.status(400).json({ message: "Invalid request" });
-    }
 
-    if (user.otpExpires < Date.now()) {
+    if (user.otpExpires < Date.now())
       return res.status(400).json({ message: "OTP expired" });
-    }
 
-    if (user.otpAttempts >= 5) {
-      return res.status(403).json({ message: "Too many failed attempts" });
-    }
+    if (user.otpAttempts >= 5)
+      return res.status(403).json({ message: "Too many attempts" });
 
     const valid = await user.verifyOTP(otp);
 
@@ -227,9 +245,18 @@ const verifyLoginOTP = async (req, res) => {
     user.otp = undefined;
     user.otpExpires = undefined;
     user.otpAttempts = 0;
+
+    const accessToken = generateAccessToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+
+    user.refreshToken = crypto
+      .createHash("sha256")
+      .update(refreshToken)
+      .digest("hex");
+
     await user.save();
 
-    generateToken(res, user._id);
+    setAuthCookies(res, accessToken, refreshToken);
 
     res.json({
       message: "Login successful",
@@ -238,9 +265,48 @@ const verifyLoginOTP = async (req, res) => {
       role: user.role,
     });
 
-  } catch (error) {
-    console.error("❌ VERIFY LOGIN OTP ERROR:", error);
+  } catch {
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+/* =========================
+   REFRESH TOKEN
+========================= */
+
+const refreshAccessToken = async (req, res) => {
+  try {
+    const token = req.cookies.refreshToken;
+    if (!token)
+      return res.status(401).json({ message: "No refresh token" });
+
+    const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
+
+    const user = await User.findById(decoded.id);
+    if (!user)
+      return res.status(401).json({ message: "User not found" });
+
+    const hashed = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
+
+    if (user.refreshToken !== hashed)
+      return res.status(401).json({ message: "Invalid refresh token" });
+
+    const newAccessToken = generateAccessToken(user._id);
+
+    res.cookie("accessToken", newAccessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 15 * 60 * 1000,
+    });
+
+    res.json({ message: "Access token refreshed" });
+
+  } catch {
+    res.status(401).json({ message: "Invalid refresh token" });
   }
 };
 
@@ -248,17 +314,29 @@ const verifyLoginOTP = async (req, res) => {
    LOGOUT
 ========================= */
 
-const logoutUser = (req, res) => {
-  res.cookie("token", "", {
-    httpOnly: true,
-    expires: new Date(0),
-  });
+const logoutUser = async (req, res) => {
+  const token = req.cookies.refreshToken;
+
+  if (token) {
+    const hashed = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
+
+    await User.findOneAndUpdate(
+      { refreshToken: hashed },
+      { refreshToken: null }
+    );
+  }
+
+  res.cookie("accessToken", "", { httpOnly: true, expires: new Date(0) });
+  res.cookie("refreshToken", "", { httpOnly: true, expires: new Date(0) });
 
   res.json({ message: "Logged out successfully" });
 };
 
 /* =========================
-   GET PROFILE
+   PROFILE
 ========================= */
 
 const getUserProfile = async (req, res) => {
@@ -276,6 +354,7 @@ module.exports = {
   loginUser,
   requestLoginOTP,
   verifyLoginOTP,
+  refreshAccessToken,
   logoutUser,
   getUserProfile,
 };

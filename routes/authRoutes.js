@@ -7,6 +7,7 @@ const {
   loginUser,
   requestLoginOTP,
   verifyLoginOTP,
+  refreshAccessToken,
   logoutUser,
   getUserProfile,
 } = require("../controllers/authController");
@@ -43,6 +44,11 @@ router.post("/request-login-otp", validateLogin, requestLoginOTP);
    VERIFY LOGIN OTP
 ========================= */
 router.post("/verify-login-otp", validateOTP, verifyLoginOTP);
+
+/* =========================
+   REFRESH ACCESS TOKEN
+========================= */
+router.post("/refresh", refreshAccessToken);
 
 /* =========================
    LOGOUT

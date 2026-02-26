@@ -1,5 +1,8 @@
-const Product =require("../models/productModel");
-//GET all product
+const Product = require("../models/productModel");
+
+/* ==========================================
+   GET ALL PRODUCTS
+========================================== */
 const getProducts = async (req, res) => {
   try {
     const { category } = req.query;
@@ -7,47 +10,47 @@ const getProducts = async (req, res) => {
     let filter = {};
 
     if (category) {
-      filter.category = new RegExp(`^${category}$`, "i"); // case-insensitive
+      filter.category = new RegExp(`^${category}$`, "i");
     }
-
-    console.log("🔍 Filter:", filter);
 
     const products = await Product.find(filter);
 
-    console.log("✅ Products found:", products.length);
-
     res.status(200).json(products);
   } catch (error) {
-    console.error("🔥 Product Fetch Error:", error);
     res.status(500).json({ message: error.message });
   }
 };
 
-//get  product by id
+/* ==========================================
+   GET PRODUCT BY ID (WITH REVIEWS)
+========================================== */
+const getProductsbyId = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id)
+      .populate("reviews.user", "username");
 
-const getProductsbyId=async(req,res)=>{
-    try{
-        const productById=await Product.findById(req.params.id);
-        res.status(200).json(productById);
-    }catch(errror){
-        res.status(500).json({message:error.message})
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
     }
-}
 
-//create products
+    res.json(product);
 
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/* ==========================================
+   CREATE PRODUCT
+========================================== */
 const createProduct = async (req, res, next) => {
   try {
-    console.log("📦 Incoming product data:", req.body);
-
-    // Validate required fields
     if (!req.body.name || !req.body.price) {
       return res.status(400).json({
         message: "Name and price are required",
       });
     }
 
-    // Handle image uploads safely
     let imagePaths = [];
 
     if (req.files && req.files.length > 0) {
@@ -56,7 +59,6 @@ const createProduct = async (req, res, next) => {
       );
     }
 
-    // Parse variants safely (because sent as JSON string from frontend)
     let parsedVariants = [];
 
     if (req.body.variants) {
@@ -86,17 +88,16 @@ const createProduct = async (req, res, next) => {
 
     const savedProduct = await product.save();
 
-    console.log("✅ Product created:", savedProduct._id);
-
     res.status(201).json(savedProduct);
 
   } catch (error) {
-    console.error("❌ Create Product Error:", error.message);
-    next(error); // send to global error handler
+    next(error);
   }
 };
-//updateproduct
 
+/* ==========================================
+   UPDATE PRODUCT
+========================================== */
 const updateProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -111,7 +112,6 @@ const updateProduct = async (req, res) => {
     product.type = req.body.type || product.type;
     product.description = req.body.description || product.description;
     product.price = req.body.price ?? product.price;
-    product.stock = req.body.stock ?? product.stock;
     product.discount = req.body.discount ?? product.discount;
     product.isFeatured = req.body.isFeatured ?? product.isFeatured;
     product.isNewArrival = req.body.isNewArrival ?? product.isNewArrival;
@@ -124,7 +124,10 @@ const updateProduct = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-//delete
+
+/* ==========================================
+   DELETE PRODUCT
+========================================== */
 const deleteProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -142,4 +145,126 @@ const deleteProduct = async (req, res) => {
   }
 };
 
-module.exports={getProducts,createProduct,updateProduct,deleteProduct,getProductsbyId};
+/* ==========================================
+   ADD REVIEW
+========================================== */
+const addProductReview = async (req, res) => {
+  try {
+    const { rating, comment } = req.body;
+
+    const product = await Product.findById(req.params.id);
+
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    const alreadyReviewed = product.reviews.find(
+      (r) => r.user.toString() === req.user._id.toString()
+    );
+
+    if (alreadyReviewed) {
+      return res.status(400).json({ message: "Product already reviewed" });
+    }
+
+    const review = {
+      user: req.user._id,
+      name: req.user.username,
+      rating: Number(rating),
+      comment,
+    };
+
+    product.reviews.push(review);
+    product.numReviews = product.reviews.length;
+
+    product.rating =
+      product.reviews.reduce((acc, item) => acc + item.rating, 0) /
+      product.reviews.length;
+
+    await product.save();
+
+    res.status(201).json({ message: "Review added" });
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/* ==========================================
+   UPDATE REVIEW
+========================================== */
+const updateProductReview = async (req, res) => {
+  try {
+    const { rating, comment } = req.body;
+
+    const product = await Product.findById(req.params.id);
+
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    const review = product.reviews.find(
+      (r) => r.user.toString() === req.user._id.toString()
+    );
+
+    if (!review) {
+      return res.status(404).json({ message: "Review not found" });
+    }
+
+    review.rating = Number(rating);
+    review.comment = comment;
+
+    product.rating =
+      product.reviews.reduce((acc, item) => acc + item.rating, 0) /
+      product.reviews.length;
+
+    await product.save();
+
+    res.json({ message: "Review updated" });
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/* ==========================================
+   DELETE REVIEW
+========================================== */
+const deleteProductReview = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    product.reviews = product.reviews.filter(
+      (r) => r.user.toString() !== req.user._id.toString()
+    );
+
+    product.numReviews = product.reviews.length;
+
+    product.rating =
+      product.reviews.length === 0
+        ? 0
+        : product.reviews.reduce((acc, item) => acc + item.rating, 0) /
+          product.reviews.length;
+
+    await product.save();
+
+    res.json({ message: "Review removed" });
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+module.exports = {
+  getProducts,
+  getProductsbyId,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+  addProductReview,
+  updateProductReview,
+  deleteProductReview,
+};

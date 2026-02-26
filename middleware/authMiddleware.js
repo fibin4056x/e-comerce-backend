@@ -2,15 +2,15 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/userModel");
 
 /* =========================
-   PROTECT (COOKIE BASED)
+   PROTECT (ACCESS TOKEN BASED)
 ========================= */
 
 const protect = async (req, res, next) => {
   try {
-    const token = req.cookies?.token;
+    const token = req.cookies?.accessToken;
 
     if (!token) {
-      console.log("❌ AUTH: No token in cookies");
+      console.log("❌ AUTH: No access token in cookies");
       return res.status(401).json({ message: "Not authorized" });
     }
 
@@ -19,8 +19,10 @@ const protect = async (req, res, next) => {
     try {
       decoded = jwt.verify(token, process.env.JWT_SECRET);
     } catch (err) {
-      console.log("❌ AUTH: Token invalid or expired");
-      return res.status(401).json({ message: "Session expired. Please login again." });
+      console.log("❌ AUTH: Access token invalid or expired");
+      return res.status(401).json({
+        message: "Access token expired. Please refresh session.",
+      });
     }
 
     const user = await User.findById(decoded.id).select("-password");
