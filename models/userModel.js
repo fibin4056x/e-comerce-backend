@@ -22,6 +22,10 @@ const userSchema = new mongoose.Schema(
     required: true,
     minlength: 6
   },
+  profileImage:{
+    type: String,
+    default :"user"
+  },
 
   role: {
     type: String,
@@ -82,7 +86,7 @@ userSchema.methods.hashOTP = async function (otp) {
 };
 
 /* =========================
-   VERIFY OTP
+   VERIFY OTP 
 ========================= */
 
 userSchema.methods.verifyOTP = async function (enteredOTP) {

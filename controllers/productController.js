@@ -106,25 +106,88 @@ const updateProduct = async (req, res) => {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    product.name = req.body.name || product.name;
-    product.brand = req.body.brand || product.brand;
-    product.category = req.body.category || product.category;
-    product.type = req.body.type || product.type;
-    product.description = req.body.description || product.description;
-    product.price = req.body.price ?? product.price;
-    product.discount = req.body.discount ?? product.discount;
-    product.isFeatured = req.body.isFeatured ?? product.isFeatured;
-    product.isNewArrival = req.body.isNewArrival ?? product.isNewArrival;
+    /* ================= BASIC FIELDS ================= */
+
+    product.name = req.body.name ?? product.name;
+    product.brand = req.body.brand ?? product.brand;
+    product.category = req.body.category ?? product.category;
+    product.type = req.body.type ?? product.type;
+    product.description = req.body.description ?? product.description;
+
+    if (req.body.price !== undefined) {
+      product.price = Number(req.body.price);
+    }
+
+    if (req.body.originalPrice !== undefined) {
+      product.originalPrice = Number(req.body.originalPrice);
+    }
+
+    /* ================= AUTO DISCOUNT CALC ================= */
+
+    if (product.originalPrice > 0) {
+      product.discount = Math.round(
+        ((product.originalPrice - product.price) /
+          product.originalPrice) *
+          100
+      );
+    } else {
+      product.discount = 0;
+    }
+
+    /* ================= BOOLEAN FIELDS ================= */
+
+    if (req.body.isFeatured !== undefined) {
+      product.isFeatured = req.body.isFeatured === "true";
+    }
+
+    if (req.body.isNewArrival !== undefined) {
+      product.isNewArrival = req.body.isNewArrival === "true";
+    }
+
+    /* ================= HANDLE VARIANTS ================= */
+
+    if (req.body.variants) {
+      try {
+        const parsedVariants = JSON.parse(req.body.variants);
+
+        if (!Array.isArray(parsedVariants)) {
+          return res
+            .status(400)
+            .json({ message: "Variants must be an array" });
+        }
+
+        product.variants = parsedVariants.map((v) => ({
+          size: v.size,
+          color: v.color,
+          stock: Number(v.stock),
+        }));
+
+      } catch (err) {
+        return res
+          .status(400)
+          .json({ message: "Invalid variants format" });
+      }
+    }
+
+    /* ================= HANDLE NEW IMAGES ================= */
+
+    if (req.files && req.files.length > 0) {
+      const newImages = req.files.map(
+        (file) => `/uploads/${file.filename}`
+      );
+
+      product.images = newImages; // replace images
+    }
 
     const updatedProduct = await product.save();
 
-    res.json(updatedProduct);
+    res.status(200).json(updatedProduct);
 
   } catch (error) {
+    console.error(error); // IMPORTANT FOR DEBUG
     res.status(500).json({ message: error.message });
   }
 };
-
 /* ==========================================
    DELETE PRODUCT
 ========================================== */

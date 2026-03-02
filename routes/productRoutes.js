@@ -10,13 +10,13 @@ router.get("/:id",getProductsbyId)
 //CREATE new product
 router.post("/", protect, admin ,upload.array("images",5),createProduct);
 //update product
-router.put("/:id",protect,admin,updateProduct);
+router.put("/:id", protect, admin, upload.array("images", 5), updateProduct);
 //delete product
-router.delete("/:id",protect,admin,deleteProduct)
+router.delete("/:id",protect,admin,deleteProduct,)
 //review
 router.post("/:id/reviews", protect, addProductReview);
-router.post("/:id/reviews", protect, addProductReview);
-router.put("/:id/reviews", protect, updateProductReview);
-router.delete("/:id/reviews", protect, deleteProductReview);
 
+router.put("/:id/reviews/:reviewId", protect, updateProductReview);
+
+router.delete("/:id/reviews/:reviewId", protect, deleteProductReview);
 module.exports= router;

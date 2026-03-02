@@ -13,10 +13,6 @@ const generateAccessToken = (id) => {
 };
 
 const generateRefreshToken = (id) => {
-  if (!process.env.JWT_REFRESH_SECRET) {
-    throw new Error("JWT_REFRESH_SECRET is not defined");
-  }
-
   return jwt.sign({ id }, process.env.JWT_REFRESH_SECRET, {
     expiresIn: "30d",
   });
@@ -54,14 +50,9 @@ const registerUser = async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
-    if (!username || !email || !password) {
-      return res.status(400).json({ message: "All fields required" });
-    }
-
     const existing = await User.findOne({ email });
-    if (existing) {
+    if (existing)
       return res.status(400).json({ message: "User already exists" });
-    }
 
     const otp = generateOTP();
 
@@ -83,7 +74,7 @@ const registerUser = async (req, res) => {
       message: "Registration successful. Verify OTP.",
     });
 
-  } catch {
+  } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -93,12 +84,12 @@ const registerUser = async (req, res) => {
 ========================= */
 
 const verifyRegisterOTP = async (req, res) => {
-  console.log("🔥 verifyRegisterOTP controller reached");
   try {
     const { email, otp } = req.body;
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user)
+      return res.status(404).json({ message: "User not found" });
 
     if (!user.otp || user.otpExpires < Date.now())
       return res.status(400).json({ message: "OTP expired" });
@@ -137,6 +128,7 @@ const verifyRegisterOTP = async (req, res) => {
       username: user.username,
       email: user.email,
       role: user.role,
+      profileImage: user.profileImage,
     });
 
   } catch {
@@ -178,6 +170,7 @@ const loginUser = async (req, res) => {
       username: user.username,
       email: user.email,
       role: user.role,
+      profileImage: user.profileImage,
     });
 
   } catch {
@@ -194,7 +187,8 @@ const requestLoginOTP = async (req, res) => {
     const { email } = req.body;
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user)
+      return res.status(404).json({ message: "User not found" });
 
     if (!user.isVerified)
       return res.status(403).json({ message: "Account not verified" });
@@ -262,7 +256,9 @@ const verifyLoginOTP = async (req, res) => {
       message: "Login successful",
       _id: user._id,
       username: user.username,
+      email: user.email,
       role: user.role,
+      profileImage: user.profileImage,
     });
 
   } catch {
@@ -340,13 +336,17 @@ const logoutUser = async (req, res) => {
 ========================= */
 
 const getUserProfile = async (req, res) => {
+  const user = await User.findById(req.user.id);
+
   res.json({
-    _id: req.user._id,
-    username: req.user.username,
-    email: req.user.email,
-    role: req.user.role,
+    _id: user._id,
+    username: user.username,
+    email: user.email,
+    role: user.role,
+    profileImage: user.profileImage,
   });
 };
+
 
 module.exports = {
   registerUser,

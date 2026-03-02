@@ -58,22 +58,41 @@ if (!allowedCountries.includes(country)) {
 }
 
 // POSTAL CODE VALIDATION (India Example)
+// POSTAL CODE VALIDATION
+
+if (!postalCode || postalCode.trim().length === 0) {
+  return res.status(400).json({
+    message: "Postal code is required",
+  });
+}
+
 if (country === "India") {
-  if (!/^[0-9]{6}$/.test(postalCode)) {
+  if (!/^[0-9]{6}$/.test(postalCode.trim())) {
     return res.status(400).json({
       message: "Indian postal code must be 6 digits",
     });
   }
 }
 
-// USA Example
 if (country === "USA") {
-  if (!/^[0-9]{5}(-[0-9]{4})?$/.test(postalCode)) {
+  if (!/^[0-9]{5}(-[0-9]{4})?$/.test(postalCode.trim())) {
     return res.status(400).json({
       message: "Invalid US ZIP code",
     });
   }
 }
+
+if (country === "UK") {
+  const ukRegex =
+    /^[A-Z]{1,2}[0-9][0-9A-Z]? ?[0-9][A-Z]{2}$/i;
+
+  if (!ukRegex.test(postalCode.trim())) {
+    return res.status(400).json({
+      message: "Invalid UK postcode",
+    });
+  }
+}
+
     const cart = await Cart.findOne({
       user: req.user._id,
     }).populate("items.product");
