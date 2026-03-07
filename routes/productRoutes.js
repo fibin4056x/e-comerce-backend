@@ -12,7 +12,7 @@ router.post("/", protect, admin ,upload.array("images",5),createProduct);
 //update product
 router.put("/:id", protect, admin, upload.array("images", 5), updateProduct);
 //delete product
-router.delete("/:id",protect,admin,deleteProduct,)
+router.delete("/:id",protect,admin,deleteProduct)
 //review
 router.post("/:id/reviews", protect, addProductReview);
 

@@ -4,6 +4,8 @@ const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const path = require("path");
 const connectDB = require("./config/db");
+const adminUserRoutes = require("./routes/adminUserRoutes");
+
 
 const app = express();
 
@@ -28,6 +30,7 @@ app.use("/uploads", express.static(path.join(__dirname, "/uploads")));
 app.get("/", (req, res) => {
   res.send("🚀 API Running");
 });
+app.use("/api/admin", adminUserRoutes);
 
 const PORT = process.env.PORT || 5000;
 

@@ -5,226 +5,351 @@ const Product = require("../models/productModel");
 /* ==========================================
    CREATE ORDER
 ========================================== */
+
 const createOrder = async (req, res) => {
-  console.log("🔥 CREATE ORDER START");
+
+  console.log("🟢 ORDER CREATE START");
 
   try {
-    console.log("➡ USER:", req.user?._id);
+
+    const userId = req.user._id;
+    const { shippingAddress } = req.body;
+
+    console.log("➡ USER:", userId);
     console.log("➡ BODY:", req.body);
-const { shippingAddress } = req.body;
 
-if (!shippingAddress) {
-  return res.status(400).json({
-    message: "Shipping address is required",
-  });
-}
 
-const { address, city, postalCode, country } = shippingAddress;
+    /* ===============================
+       VALIDATE ADDRESS
+    =============================== */
 
-// ADDRESS VALIDATION
-if (
-  !address ||
-  address.trim().length < 10 ||
-  address.trim().length > 200
-) {
-  return res.status(400).json({
-    message: "Address must be between 10 and 200 characters",
-  });
-}
+    if (!shippingAddress)
+      return res.status(400).json({ message: "Shipping address required" });
 
-// Prevent numeric-only address
-if (/^[0-9\s]+$/.test(address.trim())) {
-  return res.status(400).json({
-    message: "Address cannot be only numbers",
-  });
-}
+    const { address, city, postalCode, country } = shippingAddress;
 
-// CITY VALIDATION
-if (
-  !city ||
-  !/^[a-zA-Z\s]{2,50}$/.test(city.trim())
-) {
-  return res.status(400).json({
-    message: "Enter a valid city name",
-  });
-}
+    if (!address || address.trim().length < 10)
+      return res.status(400).json({ message: "Invalid address" });
 
-// COUNTRY VALIDATION
-const allowedCountries = ["India", "USA", "UK", "Canada"];
-if (!allowedCountries.includes(country)) {
-  return res.status(400).json({
-    message: "Invalid country selection",
-  });
-}
+    if (/^[0-9\s]+$/.test(address))
+      return res.status(400).json({ message: "Address cannot be numeric only" });
 
-// POSTAL CODE VALIDATION (India Example)
-// POSTAL CODE VALIDATION
+    if (!/^[a-zA-Z\s]{2,50}$/.test(city))
+      return res.status(400).json({ message: "Invalid city name" });
 
-if (!postalCode || postalCode.trim().length === 0) {
-  return res.status(400).json({
-    message: "Postal code is required",
-  });
-}
 
-if (country === "India") {
-  if (!/^[0-9]{6}$/.test(postalCode.trim())) {
-    return res.status(400).json({
-      message: "Indian postal code must be 6 digits",
+
+    /* ===============================
+       FETCH CART
+    =============================== */
+
+    const cart = await Cart.findOne({ user: userId })
+      .populate("items.product")
+      .lean();
+
+    console.log("➡ CART FOUND:", !!cart);
+
+    if (!cart || cart.items.length === 0)
+      return res.status(400).json({ message: "Cart empty" });
+
+
+    /* ===============================
+       GET PRODUCT IDS
+    =============================== */
+
+    const productIds = cart.items.map(i => i.product._id);
+
+    const products = await Product.find({
+      _id: { $in: productIds }
     });
-  }
-}
 
-if (country === "USA") {
-  if (!/^[0-9]{5}(-[0-9]{4})?$/.test(postalCode.trim())) {
-    return res.status(400).json({
-      message: "Invalid US ZIP code",
-    });
-  }
-}
+    console.log("➡ PRODUCTS FETCHED:", products.length);
 
-if (country === "UK") {
-  const ukRegex =
-    /^[A-Z]{1,2}[0-9][0-9A-Z]? ?[0-9][A-Z]{2}$/i;
 
-  if (!ukRegex.test(postalCode.trim())) {
-    return res.status(400).json({
-      message: "Invalid UK postcode",
-    });
-  }
-}
 
-    const cart = await Cart.findOne({
-      user: req.user._id,
-    }).populate("items.product");
-
-    console.log("➡ CART FOUND:", cart ? "YES" : "NO");
-
-    if (!cart || cart.items.length === 0) {
-      console.log("❌ Cart empty");
-      return res.status(400).json({
-        message: "Cart is empty",
-      });
-    }
+    /* ===============================
+       BUILD ORDER ITEMS
+    =============================== */
 
     let totalPrice = 0;
     const orderItems = [];
 
-    /* ==========================================
-       STOCK CHECK + REDUCE
-    ========================================== */
-    for (const item of cart.items) {
-      console.log("🛒 Processing Item:", item.product.name);
+    for (const cartItem of cart.items) {
 
-      const product = await Product.findById(
-        item.product._id
+      const product = products.find(
+        p => p._id.toString() === cartItem.product._id.toString()
       );
 
-      if (!product) {
-        console.log("❌ Product not found in DB");
-        return res.status(404).json({
-          message: "Product not found",
-        });
-      }
+      if (!product)
+        return res.status(404).json({ message: "Product not found" });
+
 
       const variant = product.variants.find(
-        (v) =>
-          v.size === item.size &&
-          v.color === item.color
+        v => v.size === cartItem.size && v.color === cartItem.color
       );
 
-      if (!variant) {
-        console.log("❌ Variant not found");
+      if (!variant)
+        return res.status(400).json({ message: "Variant not found" });
+
+
+      if (variant.stock < cartItem.quantity)
         return res.status(400).json({
-          message: `Variant not found for ${product.name}`,
+          message: `Insufficient stock for ${product.name}`
         });
-      }
 
-      console.log(
-        "📦 Current Stock:",
-        variant.stock,
-        "| Requested:",
-        item.quantity
+
+      /* STOCK UPDATE */
+
+      await Product.updateOne(
+        {
+          _id: product._id,
+          "variants.size": cartItem.size,
+          "variants.color": cartItem.color
+        },
+        {
+          $inc: {
+            "variants.$.stock": -cartItem.quantity
+          }
+        }
       );
 
-      if (variant.stock < item.quantity) {
-        console.log("❌ Insufficient stock");
-        return res.status(400).json({
-          message: `Insufficient stock for ${product.name}`,
-        });
-      }
 
-      variant.stock -= item.quantity;
+      totalPrice += product.price * cartItem.quantity;
 
-      console.log(
-        "✅ Stock After Deduction:",
-        variant.stock
-      );
-
-      await product.save();
-      console.log("💾 Product saved");
-
-      totalPrice += product.price * item.quantity;
 
       orderItems.push({
         product: product._id,
         name: product.name,
         image: product.images?.[0] || "",
-        size: item.size,
-        color: item.color,
-        quantity: item.quantity,
-        price: product.price,
+        size: cartItem.size,
+        color: cartItem.color,
+        quantity: cartItem.quantity,
+        price: product.price
       });
+
     }
 
-    console.log("💰 TOTAL PRICE:", totalPrice);
+
+
+    /* ===============================
+       CREATE ORDER
+    =============================== */
 
     const order = await Order.create({
-      user: req.user._id,
+
+      user: userId,
       orderItems,
       shippingAddress,
+
+      itemsPrice: totalPrice,
+      shippingPrice: 0,
+      taxPrice: 0,
       totalPrice,
+
+      status: "Pending"
+
     });
 
-    console.log("🧾 ORDER CREATED:", order._id);
+    console.log("✅ ORDER CREATED:", order._id);
 
-    cart.items = [];
-    await cart.save();
-    console.log("🗑 Cart cleared");
+
+
+    /* ===============================
+       CLEAR CART
+    =============================== */
+
+    await Cart.updateOne(
+      { user: userId },
+      { $set: { items: [] } }
+    );
+
+    console.log("🗑 CART CLEARED");
+
 
     res.status(201).json(order);
 
   } catch (error) {
-    console.error("🔥 ORDER ERROR:");
+
+    console.error("🔥 CREATE ORDER ERROR");
     console.error(error);
+
     res.status(500).json({
-      message: error.message,
+      message: error.message
     });
+
   }
+
 };
+
+
 
 /* ==========================================
-   GET MY ORDERS
+   GET USER ORDERS
 ========================================== */
+
 const getmyOrders = async (req, res) => {
+
   try {
-    console.log("📦 Fetching orders for:", req.user._id);
+
+    console.log("📦 GET USER ORDERS:", req.user._id);
 
     const orders = await Order.find({
-      user: req.user._id,
-    });
+      user: req.user._id
+    })
+      .sort({ createdAt: -1 })
+      .lean();
 
-    console.log("📦 Orders Found:", orders.length);
+    console.log("📦 ORDERS COUNT:", orders.length);
 
     res.json(orders);
+
   } catch (error) {
-    console.error("🔥 FETCH ORDER ERROR:", error);
-    res.status(500).json({
-      message: error.message,
-    });
+
+    console.error("🔥 USER ORDER FETCH ERROR");
+    console.error(error);
+
+    res.status(500).json({ message: error.message });
+
+  }
+
+};
+
+
+
+/* ==========================================
+   GET ALL ORDERS (ADMIN)
+========================================== */
+
+const getAllOrders = async (req, res) => {
+  try {
+    const orders = await Order.find()
+      .populate("user", "username email")   // IMPORTANT
+      .sort({ createdAt: -1 });
+
+    res.json(orders);
+
+  } catch (error) {
+    console.error("ADMIN ORDER FETCH ERROR:", error);
+    res.status(500).json({ message: error.message });
   }
 };
 
+
+
+/* ==========================================
+   UPDATE ORDER STATUS
+========================================== */
+
+const updateOrderStatus = async (req, res) => {
+
+  try {
+
+    const { status } = req.body;
+
+    console.log("➡ UPDATE STATUS:", status);
+
+    const order = await Order.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true }
+    );
+
+    if (!order)
+      return res.status(404).json({ message: "Order not found" });
+
+    res.json(order);
+
+  } catch (error) {
+
+    console.error("🔥 UPDATE STATUS ERROR");
+    console.error(error);
+
+    res.status(500).json({ message: error.message });
+
+  }
+
+};
+
+
+
+/* ==========================================
+   CANCEL ORDER
+========================================== */
+
+const cancelOrder = async (req, res) => {
+  try {
+
+    const order = await Order.findById(req.params.id);
+
+    if (!order)
+      return res.status(404).json({ message: "Order not found" });
+
+    // user cannot cancel after shipping
+    if (order.status === "Shipped" || order.status === "Delivered") {
+      return res.status(400).json({
+        message: "Order cannot be cancelled after shipping"
+      });
+    }
+
+    order.status = "Cancelled";
+
+    await order.save();
+
+    res.json({ message: "Order cancelled" });
+
+  } catch (error) {
+
+    console.error(error);
+
+    res.status(500).json({
+      message: error.message
+    });
+
+  }
+};
+
+
+
+/* ==========================================
+   MARK ORDER PAID
+========================================== */
+
+const markDelivered = async (req, res) => {
+  try {
+
+    const order = await Order.findById(req.params.id);
+
+    if (!order)
+      return res.status(404).json({ message: "Order not found" });
+
+    order.status = "Delivered";
+    order.isDelivered = true;
+    order.deliveredAt = Date.now();
+
+    await order.save();
+
+    res.json(order);
+
+  } catch (error) {
+
+    console.error("DELIVER ERROR:", error);
+
+    res.status(500).json({
+      message: error.message
+    });
+
+  }
+};
+
+
+
 module.exports = {
+
   createOrder,
   getmyOrders,
+  getAllOrders,
+  updateOrderStatus,
+  cancelOrder,
+  markDelivered
+
 };

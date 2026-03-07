@@ -7,18 +7,29 @@ const crypto = require("crypto");
 ========================= */
 
 const generateAccessToken = (id) => {
+  console.log("Generating access token for:", id);
+
   return jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: "15m",
   });
 };
 
 const generateRefreshToken = (id) => {
+  console.log("Generating refresh token for:", id);
+
   return jwt.sign({ id }, process.env.JWT_REFRESH_SECRET, {
     expiresIn: "30d",
   });
 };
 
+/* =========================
+   SET COOKIES
+========================= */
+
 const setAuthCookies = (res, accessToken, refreshToken) => {
+
+  console.log("Setting cookies");
+
   res.cookie("accessToken", accessToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -32,6 +43,7 @@ const setAuthCookies = (res, accessToken, refreshToken) => {
     sameSite: "strict",
     maxAge: 30 * 24 * 60 * 60 * 1000,
   });
+
 };
 
 /* =========================
@@ -39,7 +51,9 @@ const setAuthCookies = (res, accessToken, refreshToken) => {
 ========================= */
 
 const generateOTP = () => {
-  return crypto.randomInt(100000, 999999).toString();
+  const otp = crypto.randomInt(100000, 999999).toString();
+  console.log("Generated OTP:", otp);
+  return otp;
 };
 
 /* =========================
@@ -47,10 +61,15 @@ const generateOTP = () => {
 ========================= */
 
 const registerUser = async (req, res) => {
+
   try {
+
+    console.log("REGISTER BODY:", req.body);
+
     const { username, email, password } = req.body;
 
-    const existing = await User.findOne({ email });
+    const existing = await User.exists({ email });
+
     if (existing)
       return res.status(400).json({ message: "User already exists" });
 
@@ -64,8 +83,11 @@ const registerUser = async (req, res) => {
       otpAttempts: 0,
     });
 
+    console.log("User created:", user._id);
+
     user.otp = await user.hashOTP(otp);
     user.otpExpires = Date.now() + 5 * 60 * 1000;
+
     await user.save();
 
     console.log("REGISTER OTP:", otp);
@@ -75,8 +97,12 @@ const registerUser = async (req, res) => {
     });
 
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+
+    console.error("REGISTER ERROR:", err);
+    res.status(500).json({ message: err.message });
+
   }
+
 };
 
 /* =========================
@@ -84,10 +110,15 @@ const registerUser = async (req, res) => {
 ========================= */
 
 const verifyRegisterOTP = async (req, res) => {
+
   try {
+
+    console.log("VERIFY REGISTER OTP:", req.body);
+
     const { email, otp } = req.body;
 
     const user = await User.findOne({ email });
+
     if (!user)
       return res.status(404).json({ message: "User not found" });
 
@@ -100,9 +131,14 @@ const verifyRegisterOTP = async (req, res) => {
     const valid = await user.verifyOTP(otp);
 
     if (!valid) {
-      user.otpAttempts += 1;
-      await user.save();
+
+      await User.updateOne(
+        { _id: user._id },
+        { $inc: { otpAttempts: 1 } }
+      );
+
       return res.status(400).json({ message: "Invalid OTP" });
+
     }
 
     user.isVerified = true;
@@ -131,9 +167,13 @@ const verifyRegisterOTP = async (req, res) => {
       profileImage: user.profileImage,
     });
 
-  } catch {
-    res.status(500).json({ message: "Server error" });
+  } catch (err) {
+
+    console.error("VERIFY REGISTER OTP ERROR:", err);
+    res.status(500).json({ message: err.message });
+
   }
+
 };
 
 /* =========================
@@ -141,7 +181,11 @@ const verifyRegisterOTP = async (req, res) => {
 ========================= */
 
 const loginUser = async (req, res) => {
+
   try {
+
+    console.log("LOGIN BODY:", req.body);
+
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });
@@ -151,6 +195,11 @@ const loginUser = async (req, res) => {
 
     if (!user.isVerified)
       return res.status(403).json({ message: "Account not verified" });
+
+    if (user.isBanned)
+      return res.status(403).json({
+        message: "Your account has been banned by admin",
+      });
 
     const accessToken = generateAccessToken(user._id);
     const refreshToken = generateRefreshToken(user._id);
@@ -173,9 +222,13 @@ const loginUser = async (req, res) => {
       profileImage: user.profileImage,
     });
 
-  } catch {
-    res.status(500).json({ message: "Server error" });
+  } catch (err) {
+
+    console.error("LOGIN ERROR:", err);
+    res.status(500).json({ message: err.message });
+
   }
+
 };
 
 /* =========================
@@ -183,15 +236,25 @@ const loginUser = async (req, res) => {
 ========================= */
 
 const requestLoginOTP = async (req, res) => {
+
   try {
+
+    console.log("REQUEST LOGIN OTP:", req.body);
+
     const { email } = req.body;
 
     const user = await User.findOne({ email });
+
     if (!user)
       return res.status(404).json({ message: "User not found" });
 
     if (!user.isVerified)
       return res.status(403).json({ message: "Account not verified" });
+
+    if (user.isBanned)
+      return res.status(403).json({
+        message: "Your account has been banned by admin",
+      });
 
     const otp = generateOTP();
 
@@ -205,9 +268,13 @@ const requestLoginOTP = async (req, res) => {
 
     res.json({ message: "OTP sent successfully" });
 
-  } catch {
-    res.status(500).json({ message: "Server error" });
+  } catch (err) {
+
+    console.error("REQUEST LOGIN OTP ERROR:", err);
+    res.status(500).json({ message: err.message });
+
   }
+
 };
 
 /* =========================
@@ -215,12 +282,22 @@ const requestLoginOTP = async (req, res) => {
 ========================= */
 
 const verifyLoginOTP = async (req, res) => {
+
   try {
+
+    console.log("VERIFY LOGIN OTP:", req.body);
+
     const { email, otp } = req.body;
 
     const user = await User.findOne({ email });
+
     if (!user || !user.otp)
       return res.status(400).json({ message: "Invalid request" });
+
+    if (user.isBanned)
+      return res.status(403).json({
+        message: "Your account has been banned by admin",
+      });
 
     if (user.otpExpires < Date.now())
       return res.status(400).json({ message: "OTP expired" });
@@ -231,9 +308,14 @@ const verifyLoginOTP = async (req, res) => {
     const valid = await user.verifyOTP(otp);
 
     if (!valid) {
-      user.otpAttempts += 1;
-      await user.save();
+
+      await User.updateOne(
+        { _id: user._id },
+        { $inc: { otpAttempts: 1 } }
+      );
+
       return res.status(400).json({ message: "Invalid OTP" });
+
     }
 
     user.otp = undefined;
@@ -261,9 +343,13 @@ const verifyLoginOTP = async (req, res) => {
       profileImage: user.profileImage,
     });
 
-  } catch {
-    res.status(500).json({ message: "Server error" });
+  } catch (err) {
+
+    console.error("VERIFY LOGIN OTP ERROR:", err);
+    res.status(500).json({ message: err.message });
+
   }
+
 };
 
 /* =========================
@@ -271,16 +357,27 @@ const verifyLoginOTP = async (req, res) => {
 ========================= */
 
 const refreshAccessToken = async (req, res) => {
+
   try {
+
+    console.log("Refresh token request");
+
     const token = req.cookies.refreshToken;
+
     if (!token)
       return res.status(401).json({ message: "No refresh token" });
 
     const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
 
     const user = await User.findById(decoded.id);
+
     if (!user)
       return res.status(401).json({ message: "User not found" });
+
+    if (user.isBanned)
+      return res.status(403).json({
+        message: "Account banned",
+      });
 
     const hashed = crypto
       .createHash("sha256")
@@ -301,9 +398,13 @@ const refreshAccessToken = async (req, res) => {
 
     res.json({ message: "Access token refreshed" });
 
-  } catch {
-    res.status(401).json({ message: "Invalid refresh token" });
+  } catch (err) {
+
+    console.error("REFRESH TOKEN ERROR:", err);
+    res.status(401).json({ message: err.message });
+
   }
+
 };
 
 /* =========================
@@ -311,24 +412,39 @@ const refreshAccessToken = async (req, res) => {
 ========================= */
 
 const logoutUser = async (req, res) => {
-  const token = req.cookies.refreshToken;
 
-  if (token) {
-    const hashed = crypto
-      .createHash("sha256")
-      .update(token)
-      .digest("hex");
+  try {
 
-    await User.findOneAndUpdate(
-      { refreshToken: hashed },
-      { refreshToken: null }
-    );
+    console.log("Logout request");
+
+    const token = req.cookies.refreshToken;
+
+    if (token) {
+
+      const hashed = crypto
+        .createHash("sha256")
+        .update(token)
+        .digest("hex");
+
+      await User.findOneAndUpdate(
+        { refreshToken: hashed },
+        { refreshToken: null }
+      );
+
+    }
+
+    res.cookie("accessToken", "", { httpOnly: true, expires: new Date(0) });
+    res.cookie("refreshToken", "", { httpOnly: true, expires: new Date(0) });
+
+    res.json({ message: "Logged out successfully" });
+
+  } catch (err) {
+
+    console.error("LOGOUT ERROR:", err);
+    res.status(500).json({ message: err.message });
+
   }
 
-  res.cookie("accessToken", "", { httpOnly: true, expires: new Date(0) });
-  res.cookie("refreshToken", "", { httpOnly: true, expires: new Date(0) });
-
-  res.json({ message: "Logged out successfully" });
 };
 
 /* =========================
@@ -336,17 +452,29 @@ const logoutUser = async (req, res) => {
 ========================= */
 
 const getUserProfile = async (req, res) => {
-  const user = await User.findById(req.user.id);
 
-  res.json({
-    _id: user._id,
-    username: user.username,
-    email: user.email,
-    role: user.role,
-    profileImage: user.profileImage,
-  });
+  try {
+
+    console.log("Profile request:", req.user.id);
+
+    const user = await User.findById(req.user.id);
+
+    res.json({
+      _id: user._id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+      profileImage: user.profileImage,
+    });
+
+  } catch (err) {
+
+    console.error("PROFILE ERROR:", err);
+    res.status(500).json({ message: err.message });
+
+  }
+
 };
-
 
 module.exports = {
   registerUser,

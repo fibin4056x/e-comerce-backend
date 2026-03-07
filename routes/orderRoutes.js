@@ -1,12 +1,31 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const {protect}=require('../middleware/authMiddleware');
+
+const { protect, admin } = require("../middleware/authMiddleware");
+
 const {
-    createOrder,
-    getmyOrders,
-}=require("../controllers/orderController");
+  createOrder,
+  getmyOrders,
+  getAllOrders,
+  cancelOrder,
+  markDelivered
+} = require("../controllers/orderController");
 
-router.post("/",protect,createOrder);
-router.get('/', protect,getmyOrders);
 
-module.exports=router;
+/* USER ROUTES */
+
+router.post("/", protect, createOrder);
+
+router.get("/my", protect, getmyOrders);
+
+router.put("/:id/cancel", protect, cancelOrder);
+
+
+/* ADMIN ROUTES */
+
+router.get("/admin", protect, admin, getAllOrders);
+
+router.put("/:id/deliver", protect, admin, markDelivered);
+
+
+module.exports = router;
