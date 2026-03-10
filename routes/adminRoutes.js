@@ -11,7 +11,7 @@ const {
 } = require("../controllers/adminController");
 
 /* =========================
-   ADMIN DASHBOARD
+   ADMIN DASHBOARD 
 ========================= */
 
 router.get("/stats", protect, admin, getDashboardStats);

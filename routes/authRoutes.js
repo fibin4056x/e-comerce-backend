@@ -59,7 +59,7 @@ router.post("/refresh", refreshAccessToken);
 router.post("/logout", logoutUser);
 
 /* =========================
-   PROFILE (PROTECTED)
+   PROFILE (PROTECTED) 
 ========================= */
 router.get("/profile", protect, getUserProfile);
 router.put(

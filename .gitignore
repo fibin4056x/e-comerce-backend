@@ -1,2 +1,13 @@
 node_modules/
 .env
+# Ignore the folder where uploaded product images are stored
+uploads/
+
+# Ignore system files that Mac and Windows create
+.DS_Store
+Thumbs.db
+
+# Ignore logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

@@ -20,4 +20,4 @@ router.patch("/users/:id/ban",protect,admin,toggleBan);
 router.delete("/users/:id",protect,admin,deleteUser);
 
 
-module.exports = router;
+module.exports = router; 

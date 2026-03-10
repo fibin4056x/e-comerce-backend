@@ -408,7 +408,7 @@ const refreshAccessToken = async (req, res) => {
 };
 
 /* =========================
-   LOGOUT
+   LOGOUT 
 ========================= */
 
 const logoutUser = async (req, res) => {

@@ -222,7 +222,7 @@ const removeCartItem = async (req, res) => {
 
     if (!cart)
       return res.status(404).json({ message: "Cart not found" });
-
+ 
     cart.items = cart.items.filter(
       (item) =>
         !(

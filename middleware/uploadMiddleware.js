@@ -24,7 +24,7 @@ const storage = multer.diskStorage({
   },
 });
 
-// File filter with proper error handling
+// File filter  with proper error handling
 function checkFileType(file, cb) {
   const allowedTypes = /jpg|jpeg|png|webp/;
 

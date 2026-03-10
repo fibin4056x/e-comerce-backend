@@ -83,7 +83,7 @@ userSchema.pre("save", async function () {
 
 
 /* =========================
-   MATCH PASSWORD
+   MATCH PASSWORD 
 ========================= */
 
 userSchema.methods.matchPassword = async function(password){

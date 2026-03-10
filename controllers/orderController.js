@@ -100,18 +100,17 @@ const createOrder = async (req, res) => {
 
       /* STOCK UPDATE */
 
-      await Product.updateOne(
-        {
-          _id: product._id,
-          "variants.size": cartItem.size,
-          "variants.color": cartItem.color
-        },
-        {
-          $inc: {
-            "variants.$.stock": -cartItem.quantity
-          }
-        }
-      );
+     await Product.updateOne(
+            {
+                    _id: product._id,
+                    "variants.size": cartItem.size,
+                    "variants.color": cartItem.color,
+                    "variants.stock": { $gte: cartItem.quantity }
+            },
+            {
+              $inc: { "variants.$.stock": -cartItem.quantity }
+            }
+            );
 
 
       totalPrice += product.price * cartItem.quantity;

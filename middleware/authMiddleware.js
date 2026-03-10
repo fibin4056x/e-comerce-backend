@@ -49,7 +49,7 @@ const protect = async (req, res, next) => {
 };
 
 /* =========================
-   ADMIN MIDDLEWARE
+   ADMIN MIDDLEWARE 
 ========================= */
 
 const admin = (req, res, next) => {

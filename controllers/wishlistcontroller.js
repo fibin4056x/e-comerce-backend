@@ -10,7 +10,7 @@ const getWishlist = async (req, res) => {
 
     const wishlist = await Wishlist.findOne({
       user: req.user._id,
-    }).populate("products");
+    }).populate("products").lean();
 
     if (!wishlist) {
       console.log("⚠ No wishlist found, returning empty array");

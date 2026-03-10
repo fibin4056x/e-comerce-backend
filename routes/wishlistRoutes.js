@@ -11,4 +11,4 @@ router.get("/",protect,getWishlist);
 router.post("/",protect,addToWishlist);
 router.delete("/:productId",protect,removeFromWishlist);
 
-module.exports= router;
+module.exports= router; 

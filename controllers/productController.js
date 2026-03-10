@@ -1,5 +1,6 @@
 const Product = require("../models/productModel");
-
+const fs =require("fs");
+const path = require("path");
 /* ==========================================
    GET ALL PRODUCTS
 ========================================== */
@@ -12,10 +13,20 @@ const getProducts = async (req, res) => {
     if (category) {
       filter.category = new RegExp(`^${category}$`, "i");
     }
-
-    const products = await Product.find(filter);
-
-    res.status(200).json(products);
+    const pageSize = Number(req.query.pageSize) || 10;
+    const pageNumber = Number(req.query.pageNumber) || 1;
+    const totalproducts = await Product.countDocuments(filter).lean();
+     
+    const products = await Product.find(filter)
+    .limit(pageSize)
+    .skip(pageSize *(pageNumber - 1))
+    .lean();
+    res.status(200).json(
+      {products,
+     page:pageNumber,
+    pages:Math.ceil(totalproducts /pageSize),
+    totalproducts}
+  );
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -172,6 +183,14 @@ const updateProduct = async (req, res) => {
     /* ================= HANDLE NEW IMAGES ================= */
 
     if (req.files && req.files.length > 0) {
+      /* DLT OLD IMG */
+      product.images.forEach((img)=>{
+        const filePath =path.join(__dirname,"..",img);
+
+        if(fs.existsSync(filePath)){
+          fs.unlinkSync(filePath)
+        }
+      })
       const newImages = req.files.map(
         (file) => `/uploads/${file.filename}`
       );
@@ -198,7 +217,13 @@ const deleteProduct = async (req, res) => {
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
-
+ /* DELETE IMAGES FROM SERVER*/
+    product.images.forEach((img)=> {
+      const filePath = path.join(__dirname,"..",img);
+        if(fs.existsSync(filePath)){
+          fs.unlinkSync(filePath);
+        }
+    })
     await product.deleteOne();
 
     res.json({ message: "Product removed successfully" });
@@ -208,6 +233,17 @@ const deleteProduct = async (req, res) => {
   }
 };
 
+
+ const calculateRating =(product)=>{
+
+  product.numReviews =product.reviews.length;
+
+  product.review.length === 0
+  ? 0
+  :product.reviews.reduce((acc,item) => acc +item.rating,0)/
+   product.reviews.length;
+
+ }
 /* ==========================================
    ADD REVIEW
 ========================================== */
@@ -237,11 +273,7 @@ const addProductReview = async (req, res) => {
     };
 
     product.reviews.push(review);
-    product.numReviews = product.reviews.length;
-
-    product.rating =
-      product.reviews.reduce((acc, item) => acc + item.rating, 0) /
-      product.reviews.length;
+    calculateRating(product)
 
     await product.save();
 
@@ -275,10 +307,7 @@ const updateProductReview = async (req, res) => {
 
     review.rating = Number(rating);
     review.comment = comment;
-
-    product.rating =
-      product.reviews.reduce((acc, item) => acc + item.rating, 0) /
-      product.reviews.length;
+    calculateRating(product)
 
     await product.save();
 
@@ -304,13 +333,7 @@ const deleteProductReview = async (req, res) => {
       (r) => r.user.toString() !== req.user._id.toString()
     );
 
-    product.numReviews = product.reviews.length;
-
-    product.rating =
-      product.reviews.length === 0
-        ? 0
-        : product.reviews.reduce((acc, item) => acc + item.rating, 0) /
-          product.reviews.length;
+    calculateRating(product)
 
     await product.save();
 

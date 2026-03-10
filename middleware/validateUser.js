@@ -33,7 +33,10 @@ const validateRegister = [
     .trim()
     .notEmpty().withMessage("Username is required")
     .isLength({ min: 4, max: 30 })
-    .withMessage("Username must be 4–30 characters"),
+    .withMessage("Username must be 4–30 characters")
+    .isAlphanumeric()
+    .withMessage("Username can only contain letters and numbers")
+    ,
 
   body("email")
     .trim()
@@ -48,7 +51,9 @@ const validateRegister = [
     .isLength({ min: 6, max: 50 })
     .withMessage("Password must be 6–50 characters")
     .matches(/[0-9]/)
-    .withMessage("Password must contain at least one number"),
+    .withMessage("Password must contain at least one number")
+    .matches(/[!@#$%^&*]/)
+    .withMessage("Password must contain a special character"),
 
   handleValidation
 ];

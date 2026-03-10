@@ -5,7 +5,7 @@ const User = require("../models/userModel");
 const getAllUsers = async (req,res)=>{
   try{
 
-    const users = await User.find().select("-password");
+    const users = await User.find().select("-password").lean();
 
     res.json(users);
 
