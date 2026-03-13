@@ -238,7 +238,7 @@ const deleteProduct = async (req, res) => {
 
   product.numReviews =product.reviews.length;
 
-  product.review.length === 0
+  product.reviews.length === 0
   ? 0
   :product.reviews.reduce((acc,item) => acc +item.rating,0)/
    product.reviews.length;
@@ -280,6 +280,8 @@ const addProductReview = async (req, res) => {
     res.status(201).json({ message: "Review added" });
 
   } catch (error) {
+    console.error(error);
+    
     res.status(500).json({ message: error.message });
   }
 };
