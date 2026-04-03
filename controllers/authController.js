@@ -1,12 +1,16 @@
 const User = require("../models/userModel");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
+const path = require("path");
 
 /* =========================
    TOKEN GENERATORS
 ========================= */
 
 const generateAccessToken = (id) => {
+  if(!process.env.JWT_SECRET){
+    throw new Error("jwt_secret is not defined")
+  }
   console.log("Generating access token for:", id);
 
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -15,6 +19,9 @@ const generateAccessToken = (id) => {
 };
 
 const generateRefreshToken = (id) => {
+
+  if(process.env.NODE_ENV!=="production"){
+    throw new Error("jwt_refresh-secret is not defined")}
   console.log("Generating refresh token for:", id);
 
   return jwt.sign({ id }, process.env.JWT_REFRESH_SECRET, {
@@ -28,20 +35,23 @@ const generateRefreshToken = (id) => {
 
 const setAuthCookies = (res, accessToken, refreshToken) => {
 
+  if (process.env.NODE_ENV !== "production") {
   console.log("Setting cookies");
-
+}
   res.cookie("accessToken", accessToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    sameSite: "lax",
     maxAge: 15 * 60 * 1000,
+    path:"/"
   });
 
   res.cookie("refreshToken", refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    sameSite: "lax",
     maxAge: 30 * 24 * 60 * 60 * 1000,
+    path:"/"
   });
 
 };
@@ -51,10 +61,15 @@ const setAuthCookies = (res, accessToken, refreshToken) => {
 ========================= */
 
 const generateOTP = () => {
-  const otp = crypto.randomInt(100000, 999999).toString();
-  console.log("Generated OTP:", otp);
+
+  const otp = crypto.randomInt(100000, 1000000).toString();
+
+  if (process.env.NODE_ENV !== "production") {
+    console.log("Generated OTP:", otp);
+  }
+
   return otp;
-};
+};;
 
 /* =========================
    REGISTER
@@ -67,12 +82,7 @@ const registerUser = async (req, res) => {
     console.log("REGISTER BODY:", req.body);
 
     const { username, email, password } = req.body;
-
-    const existing = await User.exists({ email });
-
-    if (existing)
-      return res.status(400).json({ message: "User already exists" });
-
+    
     const otp = generateOTP();
 
     const user = await User.create({
@@ -82,13 +92,10 @@ const registerUser = async (req, res) => {
       isVerified: false,
       otpAttempts: 0,
     });
+     if(process.env.NODE_ENV !== "production"){
+      console.log("User created :", user._id);
+     }
 
-    console.log("User created:", user._id);
-
-    user.otp = await user.hashOTP(otp);
-    user.otpExpires = Date.now() + 5 * 60 * 1000;
-
-    await user.save();
 
     console.log("REGISTER OTP:", otp);
 
@@ -97,7 +104,9 @@ const registerUser = async (req, res) => {
     });
 
   } catch (err) {
-
+ if (err.code === 11000) {
+      return res.status(400).json({ message: "Email already registered" });
+    }
     console.error("REGISTER ERROR:", err);
     res.status(500).json({ message: err.message });
 
@@ -113,18 +122,23 @@ const verifyRegisterOTP = async (req, res) => {
 
   try {
 
-    console.log("VERIFY REGISTER OTP:", req.body);
+   if (process.env.NODE_ENV !== "production") {
+  console.log("VERIFY REGISTER OTP:", req.body.email);
+}
 
     const { email, otp } = req.body;
-
+if(!email || !otp||otp.length !==6){
+  return res.status(400).json({message :"Invalid request data"})
+}
     const user = await User.findOne({ email });
 
     if (!user)
       return res.status(404).json({ message: "User not found" });
+    if(user.isVerified) return res.status(400).json({message:"User already verufied"})
 
-    if (!user.otp || user.otpExpires < Date.now())
+      if (!user.otp || user.otpExpires < Date.now())
       return res.status(400).json({ message: "OTP expired" });
-
+    
     if (user.otpAttempts >= 5)
       return res.status(403).json({ message: "Too many attempts" });
 
@@ -242,8 +256,9 @@ const requestLoginOTP = async (req, res) => {
     console.log("REQUEST LOGIN OTP:", req.body);
 
     const { email } = req.body;
-
-    const user = await User.findOne({ email });
+ if(!email)return res.status(400).json({message:"Email is required"})
+    
+  const user = await User.findOne({ email });
 
     if (!user)
       return res.status(404).json({ message: "User not found" });
@@ -282,24 +297,32 @@ const requestLoginOTP = async (req, res) => {
 ========================= */
 
 const verifyLoginOTP = async (req, res) => {
-
   try {
 
-    console.log("VERIFY LOGIN OTP:", req.body);
-
     const { email, otp } = req.body;
+
+    if (!email || !otp || otp.length !== 6) {
+      return res.status(400).json({ message: "Invalid request data" });
+    } 
+
+    if (process.env.NODE_ENV !== "production") {
+      console.log("VERIFY LOGIN OTP:", email);
+    }
 
     const user = await User.findOne({ email });
 
     if (!user || !user.otp)
       return res.status(400).json({ message: "Invalid request" });
 
+    if (!user.isVerified)
+      return res.status(403).json({ message: "Account not verified" });
+
     if (user.isBanned)
       return res.status(403).json({
         message: "Your account has been banned by admin",
       });
 
-    if (user.otpExpires < Date.now())
+    if (!user.otpExpires || user.otpExpires < Date.now())
       return res.status(400).json({ message: "OTP expired" });
 
     if (user.otpAttempts >= 5)
@@ -308,14 +331,9 @@ const verifyLoginOTP = async (req, res) => {
     const valid = await user.verifyOTP(otp);
 
     if (!valid) {
-
-      await User.updateOne(
-        { _id: user._id },
-        { $inc: { otpAttempts: 1 } }
-      );
-
+      user.otpAttempts += 1;
+      await user.save();
       return res.status(400).json({ message: "Invalid OTP" });
-
     }
 
     user.otp = undefined;
@@ -344,13 +362,9 @@ const verifyLoginOTP = async (req, res) => {
     });
 
   } catch (err) {
-
-    console.error("VERIFY LOGIN OTP ERROR:", err);
     res.status(500).json({ message: err.message });
-
   }
-
-};
+};;
 
 /* =========================
    REFRESH TOKEN

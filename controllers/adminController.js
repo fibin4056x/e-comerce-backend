@@ -1,151 +1,154 @@
-const User = require("../models/userModel");
+const User =require("../models/userModel");
 const Product = require("../models/productModel");
-const Order = require("../models/orderModel");
+const Order =require("../models/orderModel");
 
-/* ==========================================
-   DASHBOARD MAIN STATS (PARALLEL QUERIES)
-========================================== */
+/* Dashbord*/
 
-const getDashboardStats = async (req, res) => {
-  try {
-
-    const [userCount, productCount, orderCount, revenue] = await Promise.all([
-
-      User.countDocuments(),
-
-      Product.countDocuments(),
-
-      Order.countDocuments(),
-
-      Order.aggregate([
-        {
-          $group: {
-            _id: null,
-            revenue: { $sum: "$totalPrice" }
+const getDashbord =async (req, res)=>{
+   try {
+      const [ userCount,productCount,orderState] = Promise.all([
+        User.countDocuments(),
+        Product.countDocuments(),
+        Order.aggregate([
+          {
+            $facet:{
+              totalOrders:[{$count:"count"}],
+              deliverdOrder:[{$match:{status:"Delivered"}},{$count:"count"}],
+              pendingOrder:[{$match:{status:"Pending"}},{$count:"count"}],
+              cancelledOrder:[{$match:{status:"Cancelled"}},{$count:"count"}],
+              revenue:[{$match:{status:"Delivered"}},{
+                $group:{_id:null,total:{$sum:"$totalPrice"}}
+              }]
+            }
           }
-        }
-      ])
+        ])
+      ]);
+      const  stats = orderState[0]
+        res.json({
+          users:userCount,
+          product:productCount,
+          orders:stats.totalOrders[0]?.count||0,
+          deliveredOrders:stats.deliverdOrder[0]?.count||0,
+          pendingOrders:stats.pendingOrder[0]?.count||0,
+          cancelledOrders:stats.cancelledOrder[0]?.count||0,
+          revenue:stats.revenue[0]?.total||0,
+        })
+   } catch (error) {
+    console.error("dashbord stats error " ,error)
+    res.status(500).json({message:"server error"})
+   }
+}
 
+/*monthly chart*/
+
+const getMonthlyRevenue =async(req,res)=>{
+ 
+  try {
+   const revenue = await Order.aggregate([
+    {$match:{status:"Delivered"}},
+    {
+      $group:{
+        _id:{
+          year:{$year:"$createAt"},
+          month:{$month:"$createdAt"}
+        },
+        revenue:{ $sum:"$totalPrice"}
+      }
+    },
+    {
+      $sort:{
+        "_id.year":1,"_id.month":1
+      }
+    }
+   ]);
+
+   res.json({revenue})
+  } catch (error) {
+    console.error("monthly revenue error:",error);
+    res.status(500).json({message:"Server Error"})
+    
+  }
+};
+
+/*recent orders*/
+
+const  getRecentOrders =async (req,res)=>{
+  try{
+    const page =parseInt(req.query.page)||1;
+    const limit =parseInt(req.query.limit)||5;
+    const skip =(page -1)*limit;
+
+    const [orders, totalOrders]= await Promise.all([
+      Order.find()
+      .sort({createdAt :-1})
+      .skip(skip)
+      .limit(limit)
+      .populate("user","username email")
+      .lean(),
+
+      Order.countDocuments()
     ]);
 
     res.json({
-      users: userCount,
-      products: productCount,
-      orders: orderCount,
-      revenue: revenue[0]?.revenue || 0
-    });
-
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+      orders,
+      page,
+      totalPages:Math.ceil(totalOrders/limit),
+      totalOrders
+    })
+  }catch(error){
+    console.error("Recent orders error",error)
+    res.status(500).json({message:error});
   }
 };
 
+/*  top selling  products */
 
-/* ==========================================
-   RECENT ORDERS (LIGHT QUERY)
-========================================== */
-
-const getRecentOrders = async (req, res) => {
+const getTopProduct =async(req, res)=>{
   try {
+    const page =parseInt(req.query.page)||1;
+    const limit =parseInt(req.query.limit)||5;
+    const skip=(page-1)*limit;
 
-    const orders = await Order.find()
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .populate("user", "username email")
-      .select("user totalPrice orderStatus createdAt")
-      .lean();
+    const product = await Order.aggregate([
+      {$unwind:"$orderItems"},
 
-    res.json(orders);
-
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-
-/* ==========================================
-   TOP SELLING PRODUCTS (AGGREGATION)
-========================================== */
-
-const getTopProducts = async (req, res) => {
-  try {
-
-    const products = await Order.aggregate([
-
-      { $unwind: "$orderItems" },
-
+      {$group:{
+        _id:"$orderItems.product",
+        totalSold:{$sum:"$orderItems.quantity"}
+      }},{$sort:{totalSold:-1}},
+      {$sort:{totalSold:-1}},
+      {$skip:skip},
+      {$limit:limit},
       {
-        $group: {
-          _id: "$orderItems.product",
-          totalSold: { $sum: "$orderItems.quantity" }
+        $lookup:{
+          from:"products",
+          localfield:"_id",
+          foreignField:"_id",
+          as:"product",
         }
       },
-
-      { $sort: { totalSold: -1 } },
-
-      { $limit: 5 },
-
+      {$unwind :"$product"},
       {
-        $lookup: {
-          from: "products",
-          localField: "_id",
-          foreignField: "_id",
-          as: "product"
-        }
-      },
-
-      { $unwind: "$product" },
-
-      {
-        $project: {
-          name: "$product.name",
-          price: "$product.price",
-          images: "$product.images",
-          totalSold: 1
+        $project:{
+          _id:0,
+          name:"$product.name",
+          price:"$product.price",
+          images:"$product.images",
+          totalSold:1
         }
       }
-
     ]);
-
     res.json(products);
 
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error(("Top Products Error:",error));
+    res.status(500).json({message:"Server  Error"});
   }
-};
+}
 
-
-/* ==========================================
-   MONTHLY REVENUE (CHART DATA)
-========================================== */
-
-const getMonthlyRevenue = async (req, res) => {
-  try {
-
-    const revenue = await Order.aggregate([
-
-      {
-        $group: {
-          _id: { $month: "$createdAt" },
-          revenue: { $sum: "$totalPrice" }
-        }
-      },
-
-      { $sort: { "_id": 1 } }
-
-    ]);
-
-    res.json(revenue);
-
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
- 
-
-module.exports = {
-  getDashboardStats,
+module.exports= {
+  getDashbord,
+  getTopProduct,
   getRecentOrders,
-  getTopProducts,
   getMonthlyRevenue
-};
+}
