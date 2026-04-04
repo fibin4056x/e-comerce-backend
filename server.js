@@ -12,7 +12,7 @@ const app = express();
 connectDB();
 
 app.use(cors({
-  origin: procee.env.VITE_API_UR,
+  origin: procee.env.VITE_API_URL,
   credentials: true,
 }));
 
