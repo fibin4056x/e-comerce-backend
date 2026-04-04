@@ -12,10 +12,9 @@ const app = express();
 connectDB();
 
 app.use(cors({
-  origin: procee.env.VITE_API_URL,
+  origin: process.env.VITE_API_URL,
   credentials: true,
 }));
-
 app.use(express.json());
 app.use(cookieParser());
 
