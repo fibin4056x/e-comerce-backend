@@ -13,7 +13,7 @@ connectDB();
 
 const allowedOrigins = [
   "http://localhost:5173",
-  "https://e-comercer-frontend.vercel.app",
+  "http://localhost:5174",
   "https://solesociety-6114e04of-fibins-projects-3db35d72.vercel.app"
 ];
 
