@@ -14,7 +14,7 @@ connectDB();
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
-  "https://solesociety-6114e04of-fibins-projects-3db35d72.vercel.app"
+  "https://e-comercer-frontend.vercel.app/"
 ];
 
 app.use(cors({
