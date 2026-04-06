@@ -7,23 +7,23 @@ const crypto = require("crypto");
 ========================= */
 
 const generateAccessToken = (id) => {
-  if (!process.env.JWT_SECRET) {
-    throw new Error("JWT_SECRET is not defined");
-  }
-
   return jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: "15m",
   });
 };
 
 const generateRefreshToken = (id) => {
-  if (!process.env.JWT_REFRESH_SECRET) {
-    throw new Error("JWT_REFRESH_SECRET is not defined");
-  }
-
   return jwt.sign({ id }, process.env.JWT_REFRESH_SECRET, {
     expiresIn: "30d",
   });
+};
+
+/* =========================
+   OTP GENERATOR
+========================= */
+
+const generateOTP = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
 /* =========================
@@ -36,7 +36,6 @@ const setAuthCookies = (res, accessToken, refreshToken) => {
     secure: true,
     sameSite: "None",
     maxAge: 15 * 60 * 1000,
-    path: "/",
   });
 
   res.cookie("refreshToken", refreshToken, {
@@ -44,36 +43,76 @@ const setAuthCookies = (res, accessToken, refreshToken) => {
     secure: true,
     sameSite: "None",
     maxAge: 30 * 24 * 60 * 60 * 1000,
-    path: "/",
   });
 };
 
 /* =========================
-   REGISTER
+   REGISTER (SEND OTP)
 ========================= */
 
 const registerUser = async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
-    await User.create({
-      username,
-      email,
-      password,
-      isVerified: true, // simplified (no OTP for now)
-    });
+    let user = await User.findOne({ email });
 
-    res.status(201).json({ message: "Registered successfully" });
-  } catch (err) {
-    if (err.code === 11000) {
-      return res.status(400).json({ message: "Email already exists" });
+    const otp = generateOTP();
+
+    if (user) {
+      user.otp = otp;
+      user.otpExpires = Date.now() + 5 * 60 * 1000;
+      await user.save();
+    } else {
+      user = await User.create({
+        username,
+        email,
+        password,
+        otp,
+        otpExpires: Date.now() + 5 * 60 * 1000,
+        isVerified: false,
+      });
     }
+
+    console.log("OTP:", otp); // 🔥 TEMP (since no email setup)
+
+    res.json({ message: "OTP sent (check console)" });
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
 
 /* =========================
-   LOGIN
+   VERIFY REGISTER OTP
+========================= */
+
+const verifyRegisterOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    const user = await User.findOne({ email });
+
+    if (!user || user.otp !== otp) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    if (user.otpExpires < Date.now()) {
+      return res.status(400).json({ message: "OTP expired" });
+    }
+
+    user.isVerified = true;
+    user.otp = null;
+    user.otpExpires = null;
+
+    await user.save();
+
+    res.json({ message: "Account verified" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/* =========================
+   LOGIN (PASSWORD)
 ========================= */
 
 const loginUser = async (req, res) => {
@@ -84,6 +123,10 @@ const loginUser = async (req, res) => {
 
     if (!user || !(await user.matchPassword(password))) {
       return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    if (!user.isVerified) {
+      return res.status(401).json({ message: "Verify your account first" });
     }
 
     const accessToken = generateAccessToken(user._id);
@@ -98,12 +141,75 @@ const loginUser = async (req, res) => {
 
     setAuthCookies(res, accessToken, refreshToken);
 
-    res.json({
-      message: "Login successful",
-      _id: user._id,
-      username: user.username,
-      email: user.email,
-    });
+    res.json({ message: "Login successful" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/* =========================
+   REQUEST LOGIN OTP
+========================= */
+
+const requestLoginOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const otp = generateOTP();
+
+    user.otp = otp;
+    user.otpExpires = Date.now() + 5 * 60 * 1000;
+
+    await user.save();
+
+    console.log("LOGIN OTP:", otp); // 🔥 TEMP
+
+    res.json({ message: "OTP sent (check console)" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/* =========================
+   VERIFY LOGIN OTP
+========================= */
+
+const verifyLoginOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    const user = await User.findOne({ email });
+
+    if (!user || user.otp !== otp) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    if (user.otpExpires < Date.now()) {
+      return res.status(400).json({ message: "OTP expired" });
+    }
+
+    const accessToken = generateAccessToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+
+    user.refreshToken = crypto
+      .createHash("sha256")
+      .update(refreshToken)
+      .digest("hex");
+
+    user.otp = null;
+    user.otpExpires = null;
+
+    await user.save();
+
+    setAuthCookies(res, accessToken, refreshToken);
+
+    res.json({ message: "Login successful (OTP)" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -125,17 +231,13 @@ const refreshAccessToken = async (req, res) => {
 
     const user = await User.findById(decoded.id);
 
-    if (!user) {
-      return res.status(401).json({ message: "User not found" });
-    }
-
     const hashed = crypto
       .createHash("sha256")
       .update(token)
       .digest("hex");
 
-    if (user.refreshToken !== hashed) {
-      return res.status(401).json({ message: "Invalid refresh token" });
+    if (!user || user.refreshToken !== hashed) {
+      return res.status(401).json({ message: "Invalid token" });
     }
 
     const newAccessToken = generateAccessToken(user._id);
@@ -144,7 +246,6 @@ const refreshAccessToken = async (req, res) => {
       httpOnly: true,
       secure: true,
       sameSite: "None",
-      maxAge: 15 * 60 * 1000,
     });
 
     res.json({ message: "Token refreshed" });
@@ -158,23 +259,19 @@ const refreshAccessToken = async (req, res) => {
 ========================= */
 
 const logoutUser = async (req, res) => {
-  try {
-    res.clearCookie("accessToken", {
-      httpOnly: true,
-      secure: true,
-      sameSite: "None",
-    });
+  res.clearCookie("accessToken", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "None",
+  });
 
-    res.clearCookie("refreshToken", {
-      httpOnly: true,
-      secure: true,
-      sameSite: "None",
-    });
+  res.clearCookie("refreshToken", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "None",
+  });
 
-    res.json({ message: "Logged out" });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  res.json({ message: "Logged out" });
 };
 
 /* =========================
@@ -182,22 +279,25 @@ const logoutUser = async (req, res) => {
 ========================= */
 
 const getUserProfile = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
+  const user = await User.findById(req.user.id);
 
-    res.json({
-      _id: user._id,
-      username: user.username,
-      email: user.email,
-    });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  res.json({
+    _id: user._id,
+    username: user.username,
+    email: user.email,
+  });
 };
+
+/* =========================
+   EXPORT
+========================= */
 
 module.exports = {
   registerUser,
+  verifyRegisterOTP,
   loginUser,
+  requestLoginOTP,
+  verifyLoginOTP,
   refreshAccessToken,
   logoutUser,
   getUserProfile,
