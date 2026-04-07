@@ -28,17 +28,20 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ message: "Invalid access token" });
     }
 
-    // Validate ObjectId before DB call
     if (!mongoose.Types.ObjectId.isValid(decoded.id)) {
       return res.status(401).json({ message: "Invalid token payload" });
     }
 
     const user = await User.findById(decoded.id)
       .select("-password")
-      .lean(); // lightweight
+      .lean();
 
     if (!user) {
       return res.status(401).json({ message: "User not found" });
+    }
+
+    if (user.isBanned) {
+      return res.status(403).json({ message: "Account has been suspended" });
     }
 
     if (!user.isVerified) {
@@ -55,7 +58,7 @@ const protect = async (req, res, next) => {
 };
 
 /* =========================
-   ADMIN MIDDLEWARE 
+   ADMIN MIDDLEWARE
 ========================= */
 
 const admin = (req, res, next) => {
@@ -64,7 +67,6 @@ const admin = (req, res, next) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    // Strict role check
     if (String(req.user.role).toLowerCase() !== "admin") {
       return res.status(403).json({ message: "Admin access only" });
     }

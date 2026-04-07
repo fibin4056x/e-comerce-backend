@@ -2,6 +2,14 @@ const multer = require("multer");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const cloudinary = require("../config/cloudinary");
 
+const resolveFolder = (req) => {
+  if (req.baseUrl?.includes("/auth")) {
+    return "users/profile-images";
+  }
+
+  return "products";
+};
+
 /* =========================
    STORAGE CONFIG
 ========================= */
@@ -9,8 +17,8 @@ const storage = new CloudinaryStorage({
   cloudinary,
   params: async (req, file) => {
     return {
-      folder: "products",
-      format: "webp", // enforce optimized format
+      folder: resolveFolder(req),
+      format: "webp",
       transformation: [{ quality: "auto" }],
     };
   },
@@ -36,7 +44,8 @@ const upload = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 2 * 1024 * 1024, // 2MB limit
+    fileSize: 2 * 1024 * 1024,
+    files: 5,
   },
 });
 

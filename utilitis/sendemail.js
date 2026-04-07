@@ -1,34 +1,33 @@
 const nodemailer = require("nodemailer");
 
-/* =========================
-   VALIDATE ENV
-========================= */
-if (!process.env.SMTP_HOST ||
-    !process.env.SMTP_PORT ||
-    !process.env.SMTP_USER ||
-    !process.env.SMTP_PASS) {
-  throw new Error("SMTP configuration is missing");
-}
+const getTransporter = () => {
+  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
 
-/* =========================
-   SINGLE TRANSPORTER (REUSE)
-========================= */
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT),
-  secure: Number(process.env.SMTP_PORT) === 465,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-  connectionTimeout: 10000, // 10s
-});
+  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) {
+    const error = new Error("SMTP configuration is missing");
+    error.statusCode = 500;
+    throw error;
+  }
+
+  return nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: Number(SMTP_PORT),
+    secure: Number(SMTP_PORT) === 465,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS,
+    },
+    connectionTimeout: 10000,
+  });
+};
 
 /* =========================
    SEND EMAIL
 ========================= */
 const sendEmail = async (to, subject, text) => {
   try {
+    const transporter = getTransporter();
+
     const info = await transporter.sendMail({
       from: `"Your App" <${process.env.SMTP_USER}>`,
       to,
@@ -36,11 +35,10 @@ const sendEmail = async (to, subject, text) => {
       text,
     });
 
-    return info;
-
   } catch (error) {
-    // DO NOT swallow error
-    throw new Error("Email sending failed");
+    const sendError = new Error("Email sending failed");
+    sendError.statusCode = error.statusCode || 502;
+    throw sendError;
   }
 };
 

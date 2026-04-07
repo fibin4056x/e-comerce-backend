@@ -1,4 +1,4 @@
-const rateLimiter = require("express-rate-limit");
+const { rateLimit, ipKeyGenerator } = require("express-rate-limit");
 
 /* =========================
    COMMON HANDLER
@@ -12,35 +12,36 @@ const limiterHandler = (req, res) => {
 /* =========================
    GENERAL API LIMITER
 ========================= */
-const apiLimiter = rateLimiter({
+const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
   handler: limiterHandler,
-
-  // Better key generation (works behind proxies)
-  keyGenerator: (req) => {
-    return req.ip || req.headers["x-forwarded-for"] || "unknown";
-  },
+  keyGenerator: (req) => ipKeyGenerator(req.ip || "unknown"),
 });
 
 /* =========================
    AUTH LIMITER (STRICT)
 ========================= */
-const authLimiter = rateLimiter({
+const authLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
-  max: 5, // stricter for auth
+  max: 5,
   standardHeaders: true,
   legacyHeaders: false,
+  skipSuccessfulRequests: true,
   handler: (req, res) => {
     return res.status(429).json({
       message: "Too many login attempts, please try again later",
     });
   },
-
   keyGenerator: (req) => {
-    return req.ip || req.headers["x-forwarded-for"] || "unknown";
+    const email =
+      typeof req.body?.email === "string"
+        ? req.body.email.trim().toLowerCase()
+        : "anonymous";
+
+    return `${ipKeyGenerator(req.ip || "unknown")}:${email}`;
   },
 });
 
