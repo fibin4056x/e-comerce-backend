@@ -220,7 +220,7 @@ orderSchema.pre("save",  (next) =>{
     return next(new Error("Invalid total price calculation"));
   }
 
-  next();
+  
 });
 
 
