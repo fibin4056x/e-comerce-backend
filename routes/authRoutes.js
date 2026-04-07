@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 
 const User = require("../models/userModel");
-const upload = require("../middleware/uploadMiddleware");
+const upload = require("../middleware/uploadCloudinary");
 
 const {
   registerUser,
