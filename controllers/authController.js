@@ -1,37 +1,32 @@
 const User = require("../models/userModel");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const sendEmail =require("../utilitis/sendemail.js")
+const sendEmail = require("../utilitis/sendemail.js");
 
 /* =========================
    TOKEN GENERATORS
 ========================= */
 
-const generateAccessToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: "15m",
-  });
-};
+const generateAccessToken = (id) =>
+  jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "15m" });
 
-const generateRefreshToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_REFRESH_SECRET, {
-    expiresIn: "30d",
-  });
-};
+const generateRefreshToken = (id) =>
+  jwt.sign({ id }, process.env.JWT_REFRESH_SECRET, { expiresIn: "30d" });
 
 /* =========================
    OTP GENERATOR
 ========================= */
 
-const generateOTP = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-};
+const generateOTP = () =>
+  Math.floor(100000 + Math.random() * 900000).toString();
 
 /* =========================
    SET COOKIES
 ========================= */
+
 const setAuthCookies = (res, accessToken, refreshToken) => {
   const isProd = process.env.NODE_ENV === "production";
+
   res.cookie("accessToken", accessToken, {
     httpOnly: true,
     secure: isProd,
@@ -39,7 +34,8 @@ const setAuthCookies = (res, accessToken, refreshToken) => {
     path: "/",
     maxAge: 15 * 60 * 1000,
   });
- res.cookie("refreshToken", refreshToken, {
+
+  res.cookie("refreshToken", refreshToken, {
     httpOnly: true,
     secure: isProd,
     sameSite: isProd ? "None" : "lax",
@@ -56,9 +52,12 @@ const registerUser = async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
-    let user = await User.findOne({ email });
+    if (!email || !password || !username) {
+      return res.status(400).json({ message: "All fields required" });
+    }
 
-    const otp = generateOTP(); // ✅ CREATE OTP FIRST
+    let user = await User.findOne({ email });
+    const otp = generateOTP();
 
     if (user) {
       user.otp = otp;
@@ -75,17 +74,16 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // ✅ SEND EMAIL AFTER OTP CREATED
     await sendEmail(
       email,
       "Your OTP for Registration",
       `Your OTP is ${otp}. It expires in 5 minutes.`
     );
-console.log("📨 Sending OTP to:", email);
+
     res.json({ message: "OTP sent to email" });
 
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+  } catch {
+    res.status(500).json({ message: "Server Error" });
   }
 };
 
@@ -114,8 +112,9 @@ const verifyRegisterOTP = async (req, res) => {
     await user.save();
 
     res.json({ message: "Account verified" });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+
+  } catch {
+    res.status(500).json({ message: "Server Error" });
   }
 };
 
@@ -149,17 +148,18 @@ const loginUser = async (req, res) => {
 
     setAuthCookies(res, accessToken, refreshToken);
 
-   res.json({
-  message: "Login successful",
-  user: {
-    _id: user._id,
-    username: user.username,
-    email: user.email,
-    role: user.role,
-  },
-});
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.json({
+      message: "Login successful",
+      user: {
+        _id: user._id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+      },
+    });
+
+  } catch {
+    res.status(500).json({ message: "Server Error" });
   }
 };
 
@@ -184,11 +184,16 @@ const requestLoginOTP = async (req, res) => {
 
     await user.save();
 
-    console.log("LOGIN OTP:", otp); // 🔥 TEMP
+    await sendEmail(
+      email,
+      "Your Login OTP",
+      `Your OTP is ${otp}. It expires in 5 minutes.`
+    );
 
-    res.json({ message: "OTP sent (check console)" });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.json({ message: "OTP sent to email" });
+
+  } catch {
+    res.status(500).json({ message: "Server Error" });
   }
 };
 
@@ -225,17 +230,18 @@ const verifyLoginOTP = async (req, res) => {
 
     setAuthCookies(res, accessToken, refreshToken);
 
-   res.json({
-  message: "Login successful (OTP)",
-  user: {
-    _id: user._id,
-    username: user.username,
-    email: user.email,
-    role: user.role,
-  },
-});
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.json({
+      message: "Login successful (OTP)",
+      user: {
+        _id: user._id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+      },
+    });
+
+  } catch {
+    res.status(500).json({ message: "Server Error" });
   }
 };
 
@@ -255,12 +261,16 @@ const refreshAccessToken = async (req, res) => {
 
     const user = await User.findById(decoded.id);
 
+    if (!user) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+
     const hashed = crypto
       .createHash("sha256")
       .update(token)
       .digest("hex");
 
-    if (!user || user.refreshToken !== hashed) {
+    if (user.refreshToken !== hashed) {
       return res.status(401).json({ message: "Invalid token" });
     }
 
@@ -275,8 +285,9 @@ const refreshAccessToken = async (req, res) => {
     });
 
     res.json({ message: "Token refreshed" });
-  } catch (err) {
-    res.status(401).json({ message: err.message });
+
+  } catch {
+    res.status(401).json({ message: "Unauthorized" });
   }
 };
 
@@ -286,6 +297,7 @@ const refreshAccessToken = async (req, res) => {
 
 const logoutUser = async (req, res) => {
   const isProd = process.env.NODE_ENV === "production";
+
   res.clearCookie("accessToken", {
     httpOnly: true,
     secure: isProd,
@@ -309,16 +321,21 @@ const logoutUser = async (req, res) => {
 
 const getUserProfile = async (req, res) => {
   const user = await User.findById(req.user.id);
-res.json({
-  _id: user._id,
-  username: user.username,
-  email: user.email,
-  role: user.role,
-});
+
+  if (!user) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  res.json({
+    _id: user._id,
+    username: user.username,
+    email: user.email,
+    role: user.role,
+  });
 };
 
 /* =========================
-   EXPORT
+   EXPORT (UNCHANGED)
 ========================= */
 
 module.exports = {

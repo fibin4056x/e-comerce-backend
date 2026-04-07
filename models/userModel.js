@@ -6,7 +6,8 @@ const userSchema = new mongoose.Schema(
   username:{
     type:String,
     required:true,
-    trim:true
+    trim:true,
+    lowercase:true // normalize
   },
 
   email:{
@@ -14,7 +15,8 @@ const userSchema = new mongoose.Schema(
     required:true,
     unique:true,
     lowercase:true,
-    trim:true
+    trim:true,
+    index:true
   },
 
   password:{
@@ -36,7 +38,8 @@ const userSchema = new mongoose.Schema(
 
   isBanned:{
     type:Boolean,
-    default:false
+    default:false,
+    index:true
   },
 
   refreshToken:{
@@ -51,7 +54,8 @@ const userSchema = new mongoose.Schema(
 
   otpExpires:{
     type:Date,
-    default:null
+    default:null,
+    index:true
   },
 
   isVerified:{
@@ -61,7 +65,9 @@ const userSchema = new mongoose.Schema(
 
   otpAttempts:{
     type:Number,
-    default:0
+    default:0,
+    min:0,
+    max:10
   }
 
 },{timestamps:true});
@@ -71,14 +77,21 @@ const userSchema = new mongoose.Schema(
    HASH PASSWORD
 ========================= */
 
-userSchema.pre("save", async function () {
+userSchema.pre("save", async function (next) {
+  try {
+    if (!this.isModified("password")) return next();
 
-  // Only hash password if changed
-  if(!this.isModified("password")) return;
+    if (!this.password) {
+      return next(new Error("Password is required"));
+    }
 
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
 
+    next();
+  } catch (error) {
+    next(error);
+  }
 });
 
 
@@ -87,6 +100,7 @@ userSchema.pre("save", async function () {
 ========================= */
 
 userSchema.methods.matchPassword = async function(password){
+  if (!password || !this.password) return false;
   return await bcrypt.compare(password, this.password);
 };
 
@@ -96,6 +110,8 @@ userSchema.methods.matchPassword = async function(password){
 ========================= */
 
 userSchema.methods.hashOTP = async function(otp){
+  if (!otp) throw new Error("OTP is required");
+
   const salt = await bcrypt.genSalt(10);
   return await bcrypt.hash(otp, salt);
 };
@@ -107,7 +123,7 @@ userSchema.methods.hashOTP = async function(otp){
 
 userSchema.methods.verifyOTP = async function(enteredOTP){
 
-  if(!this.otp) return false;
+  if (!this.otp || !enteredOTP) return false;
 
   return await bcrypt.compare(enteredOTP, this.otp);
 

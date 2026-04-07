@@ -4,47 +4,42 @@ const mongoose = require("mongoose");
 /* ==========================================
    GET ALL USERS (PAGINATION)
 ========================================== */
-
 const getAllUsers = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.max(1, parseInt(req.query.limit) || 10);
     const skip = (page - 1) * limit;
 
     const [users, totalUsers] = await Promise.all([
       User.find()
-        .select("-password")
+        .select("username email role isBanned createdAt")
         .skip(skip)
         .limit(limit)
         .lean(),
 
-      User.countDocuments()
+      User.countDocuments(),
     ]);
 
     res.json({
-      page,
       users,
+      page,
       totalPages: Math.ceil(totalUsers / limit),
-      totalUsers
+      totalUsers,
     });
 
-  } catch (error) {
-    console.error("Get Users Error:", error);
+  } catch {
     res.status(500).json({ message: "Server Error" });
   }
 };
 
-
 /* ==========================================
    UPDATE USER ROLE
 ========================================== */
-
 const updateUserRole = async (req, res) => {
   try {
     const { role } = req.body;
 
     const allowedRoles = ["user", "admin"];
-
     if (!allowedRoles.includes(role)) {
       return res.status(400).json({ message: "Invalid role" });
     }
@@ -65,27 +60,24 @@ const updateUserRole = async (req, res) => {
 
     res.json({
       message: "Role updated",
-      role: user.role
+      role: user.role,
     });
 
-  } catch (error) {
-    console.error("Update Role Error:", error);
+  } catch {
     res.status(500).json({ message: "Server Error" });
   }
 };
 
-
 /* ==========================================
    BAN / UNBAN USER
 ========================================== */
-
 const toggleBan = async (req, res) => {
   try {
     const { banned } = req.body;
 
     if (typeof banned !== "boolean") {
       return res.status(400).json({
-        message: "banned must be true or false"
+        message: "banned must be true or false",
       });
     }
 
@@ -105,24 +97,28 @@ const toggleBan = async (req, res) => {
 
     res.json({
       message: banned ? "User banned" : "User unbanned",
-      isBanned: user.isBanned
+      isBanned: user.isBanned,
     });
 
-  } catch (error) {
-    console.error("Toggle Ban Error:", error);
+  } catch {
     res.status(500).json({ message: "Server Error" });
   }
 };
 
-
 /* ==========================================
    DELETE USER
 ========================================== */
-
 const deleteUser = async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({ message: "Invalid user id" });
+    }
+
+    // 🔴 Prevent admin deleting themselves
+    if (req.user && req.user._id.toString() === req.params.id) {
+      return res.status(400).json({
+        message: "You cannot delete your own account",
+      });
     }
 
     const user = await User.findByIdAndDelete(req.params.id);
@@ -133,16 +129,14 @@ const deleteUser = async (req, res) => {
 
     res.json({ message: "User deleted" });
 
-  } catch (error) {
-    console.error("Delete User Error:", error);
+  } catch {
     res.status(500).json({ message: "Server Error" });
   }
 };
-
 
 module.exports = {
   getAllUsers,
   updateUserRole,
   toggleBan,
-  deleteUser
+  deleteUser,
 };
