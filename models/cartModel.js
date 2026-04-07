@@ -49,19 +49,17 @@ const cartSchema = new mongoose.Schema({
 ========================= */
 
 // Prevent invalid variant entries
-cartSchema.pre("save", function (next) {
+cartSchema.pre("save", function () {
   if (!this.items || this.items.length === 0) {
     this.totalPrice = 0;
-    return next();
+    return;
   }
 
   for (const item of this.items) {
     if (!item.size || !item.color) {
-      return next(new Error("Invalid cart item variant"));
+      throw new Error("Invalid cart item variant");
     }
   }
-
-  next();
 });
 
 module.exports = mongoose.model("Cart", cartSchema);

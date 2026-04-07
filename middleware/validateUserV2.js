@@ -48,19 +48,7 @@ const validateRegister = [
     .withMessage("Password is required")
     .bail()
     .isLength({ min: 6, max: 128 })
-    .withMessage("Password must be 6-128 characters")
-    .bail()
-    .matches(/[0-9]/)
-    .withMessage("Password must contain at least one number")
-    .bail()
-    .matches(/[!@#$%^&*]/)
-    .withMessage("Password must contain a special character")
-    .bail()
-    .matches(/[A-Z]/)
-    .withMessage("Password must contain an uppercase letter")
-    .bail()
-    .matches(/[a-z]/)
-    .withMessage("Password must contain a lowercase letter"),
+    .withMessage("Password must be 6-128 characters"),
 
   handleValidation,
 ];

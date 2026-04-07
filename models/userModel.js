@@ -77,21 +77,17 @@ const userSchema = new mongoose.Schema(
    HASH PASSWORD
 ========================= */
 
-userSchema.pre("save", async function (next) {
-  try {
-    if (!this.isModified("password")) return next();
-
-    if (!this.password) {
-      return next(new Error("Password is required"));
-    }
-
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-
-    next();
-  } catch (error) {
-    next(error);
+userSchema.pre("save", async function () {
+  if (!this.isModified("password")) {
+    return;
   }
+
+  if (!this.password) {
+    throw new Error("Password is required");
+  }
+
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
 });
 
 

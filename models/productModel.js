@@ -131,7 +131,7 @@ const productSchema = new mongoose.Schema(
    PRE-SAVE SAFETY
 ========================================== */
 
-productSchema.pre("save", function (next) {
+productSchema.pre("save", function () {
 
   /* ✅ Prevent duplicate variants */
   const seen = new Set();
@@ -140,7 +140,7 @@ productSchema.pre("save", function (next) {
     const key = `${v.size}-${v.color}`.toLowerCase();
 
     if (seen.has(key)) {
-      return next(new Error("Duplicate variant detected"));
+      throw new Error("Duplicate variant detected");
     }
 
     seen.add(key);
@@ -148,15 +148,13 @@ productSchema.pre("save", function (next) {
 
   /* ✅ Price consistency */
   if (this.originalPrice && this.originalPrice < this.price) {
-    return next(new Error("Original price cannot be less than selling price"));
+    throw new Error("Original price cannot be less than selling price");
   }
 
   /* ✅ Discount sanity */
   if (this.discount > 0 && this.discount > 100) {
-    return next(new Error("Invalid discount value"));
+    throw new Error("Invalid discount value");
   }
-
-  next();
 });
 
 module.exports = mongoose.model("Product", productSchema);

@@ -193,7 +193,7 @@ const orderSchema = new mongoose.Schema(
    PRE-SAVE SAFETY (CRITICAL)
 ========================================== */
 
-orderSchema.pre("save",  (next) =>{
+orderSchema.pre("save", function () {
 
   // Ensure paidAt exists if paid
   if (this.isPaid && !this.paidAt) {
@@ -217,10 +217,8 @@ orderSchema.pre("save",  (next) =>{
     (this.taxPrice || 0);
 
   if (Math.abs(calculatedTotal - this.totalPrice) > 1) {
-    return next(new Error("Invalid total price calculation"));
+    throw new Error("Invalid total price calculation");
   }
-
-  
 });
 
 

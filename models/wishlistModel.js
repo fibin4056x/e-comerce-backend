@@ -24,19 +24,17 @@ const wishlistSchema = new mongoose.Schema({
    PRE-SAVE SAFETY
 ========================= */
 
-wishlistSchema.pre("save", function (next) {
+wishlistSchema.pre("save", function () {
 
     if (!this.products || this.products.length === 0) {
         this.products = [];
-        return next();
+        return;
     }
 
     // Remove duplicates
     const uniqueProducts = [...new Set(this.products.map(p => p.toString()))];
 
     this.products = uniqueProducts.map(id => new mongoose.Types.ObjectId(id));
-
-    next();
 });
 
 module.exports = mongoose.model("Wishlist", wishlistSchema);
