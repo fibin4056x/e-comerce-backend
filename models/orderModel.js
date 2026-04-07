@@ -193,7 +193,7 @@ const orderSchema = new mongoose.Schema(
    PRE-SAVE SAFETY (CRITICAL)
 ========================================== */
 
-orderSchema.pre("save", function (next) {
+orderSchema.pre("save",  (next) =>{
 
   // Ensure paidAt exists if paid
   if (this.isPaid && !this.paidAt) {
