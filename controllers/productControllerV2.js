@@ -1,6 +1,9 @@
 const Product = require("../models/productModel");
 const cloudinary = require("../config/cloudinary");
-const { destroyCloudinaryAsset } = require("../utilitis/cloudinaryAsset");
+const {
+  destroyStoredAsset,
+  toPublicAssetPath,
+} = require("../utilitis/cloudinaryAsset");
 
 const escapeRegExp = (value) =>
   String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -182,7 +185,7 @@ const getProductsById = async (req, res) => {
 const createProduct = async (req, res) => {
   try {
     const payload = buildProductPayload(req.body);
-    const imageUrls = req.files?.map((file) => file.path) || [];
+    const imageUrls = req.files?.map((file) => toPublicAssetPath(file.path)) || [];
 
     const product = new Product({
       ...payload,
@@ -209,11 +212,11 @@ const updateProduct = async (req, res) => {
     if (req.files?.length) {
       await Promise.all(
         (product.images || []).map((image) =>
-          destroyCloudinaryAsset(cloudinary, image).catch(() => false)
+          destroyStoredAsset(cloudinary, image).catch(() => false)
         )
       );
 
-      payload.images = req.files.map((file) => file.path);
+      payload.images = req.files.map((file) => toPublicAssetPath(file.path));
     }
 
     Object.assign(product, payload);
@@ -235,7 +238,7 @@ const deleteProduct = async (req, res) => {
 
     await Promise.all(
       (product.images || []).map((image) =>
-        destroyCloudinaryAsset(cloudinary, image).catch(() => false)
+        destroyStoredAsset(cloudinary, image).catch(() => false)
       )
     );
 

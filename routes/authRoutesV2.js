@@ -22,7 +22,10 @@ const {
 } = require("../middleware/validateUserV2");
 const { protect } = require("../middleware/authMiddleware");
 const { authLimiter } = require("../middleware/rateLimiter");
-const { destroyCloudinaryAsset } = require("../utilitis/cloudinaryAsset");
+const {
+  destroyStoredAsset,
+  toPublicAssetPath,
+} = require("../utilitis/cloudinaryAsset");
 
 const asyncHandler = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
@@ -59,10 +62,10 @@ router.put(
     }
 
     if (user.profileImage) {
-      await destroyCloudinaryAsset(cloudinary, user.profileImage).catch(() => false);
+      await destroyStoredAsset(cloudinary, user.profileImage).catch(() => false);
     }
 
-    user.profileImage = req.file.path;
+    user.profileImage = toPublicAssetPath(req.file.path);
     await user.save();
 
     return res.json(toProfileResponse(user));
@@ -79,7 +82,7 @@ router.delete(
     }
 
     if (user.profileImage) {
-      await destroyCloudinaryAsset(cloudinary, user.profileImage).catch(() => false);
+      await destroyStoredAsset(cloudinary, user.profileImage).catch(() => false);
     }
 
     user.profileImage = "";
