@@ -1,6 +1,26 @@
 const Product = require("../models/productModel");
-const fs =require("fs");
+const fs = require("fs");
 const path = require("path");
+
+// #region agent log helper
+const DEBUG_LOG_PATH = path.join(__dirname, "..", "..", "debug-ccfac5.log");
+function writeDebug(payload) {
+  try {
+    fs.appendFileSync(
+      DEBUG_LOG_PATH,
+      JSON.stringify({
+        sessionId: "ccfac5",
+        runId: payload.runId || "initial",
+        hypothesisId: payload.hypothesisId,
+        location: payload.location,
+        message: payload.message,
+        data: payload.data,
+        timestamp: Date.now(),
+      }) + "\n"
+    );
+  } catch (_) {}
+}
+// #endregion
 /* ==========================================
    GET ALL PRODUCTS
 ========================================== */
@@ -15,19 +35,40 @@ const getProducts = async (req, res) => {
     }
     const pageSize = Number(req.query.pageSize) || 10;
     const pageNumber = Number(req.query.pageNumber) || 1;
+
     const totalproducts = await Product.countDocuments(filter).lean();
-     
+
     const products = await Product.find(filter)
-    .limit(pageSize)
-    .skip(pageSize *(pageNumber - 1))
-    .lean();
-    res.status(200).json(
-      {products,
-     page:pageNumber,
-    pages:Math.ceil(totalproducts /pageSize),
-    totalproducts}
-  );
+      .limit(pageSize)
+      .skip(pageSize * (pageNumber - 1))
+      .lean();
+
+    writeDebug({
+      hypothesisId: "H-back-products",
+      location: "productController.getProducts",
+      message: "getProducts results",
+      data: {
+        category: category || null,
+        pageSize,
+        pageNumber,
+        totalproducts,
+        returnedCount: products.length,
+      },
+    });
+
+    res.status(200).json({
+      products,
+      page: pageNumber,
+      pages: Math.ceil(totalproducts / pageSize),
+      totalproducts,
+    });
   } catch (error) {
+    writeDebug({
+      hypothesisId: "H-back-products-err",
+      location: "productController.getProducts",
+      message: "getProducts error",
+      data: { message: error.message },
+    });
     res.status(500).json({ message: error.message });
   }
 };
@@ -56,6 +97,15 @@ const getProductsbyId = async (req, res) => {
 ========================================== */
 const createProduct = async (req, res, next) => {
   try {
+    writeDebug({
+      hypothesisId: "H-back-create",
+      location: "productController.createProduct",
+      message: "createProduct called",
+      data: {
+        hasFiles: Boolean(req.files && req.files.length > 0),
+        bodyKeys: req.body ? Object.keys(req.body) : null,
+      },
+    });
     if (!req.body.name || !req.body.price) {
       return res.status(400).json({
         message: "Name and price are required",

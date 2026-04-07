@@ -1,6 +1,7 @@
 const User = require("../models/userModel");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
+const sendEmail =require("../utilitis/sendemail.js")
 
 /* =========================
    TOKEN GENERATORS
@@ -29,19 +30,20 @@ const generateOTP = () => {
 /* =========================
    SET COOKIES
 ========================= */
-
 const setAuthCookies = (res, accessToken, refreshToken) => {
+  const isProd = process.env.NODE_ENV === "production";
   res.cookie("accessToken", accessToken, {
     httpOnly: true,
-    secure: true,
-    sameSite: "None",
+    secure: isProd,
+    sameSite: isProd ? "None" : "lax",
+    path: "/",
     maxAge: 15 * 60 * 1000,
   });
-
-  res.cookie("refreshToken", refreshToken, {
+ res.cookie("refreshToken", refreshToken, {
     httpOnly: true,
-    secure: true,
-    sameSite: "None",
+    secure: isProd,
+    sameSite: isProd ? "None" : "lax",
+    path: "/",
     maxAge: 30 * 24 * 60 * 60 * 1000,
   });
 };
@@ -56,7 +58,7 @@ const registerUser = async (req, res) => {
 
     let user = await User.findOne({ email });
 
-    const otp = generateOTP();
+    const otp = generateOTP(); // ✅ CREATE OTP FIRST
 
     if (user) {
       user.otp = otp;
@@ -73,9 +75,15 @@ const registerUser = async (req, res) => {
       });
     }
 
-    console.log("OTP:", otp); // 🔥 TEMP (since no email setup)
+    // ✅ SEND EMAIL AFTER OTP CREATED
+    await sendEmail(
+      email,
+      "Your OTP for Registration",
+      `Your OTP is ${otp}. It expires in 5 minutes.`
+    );
+console.log("📨 Sending OTP to:", email);
+    res.json({ message: "OTP sent to email" });
 
-    res.json({ message: "OTP sent (check console)" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -141,7 +149,15 @@ const loginUser = async (req, res) => {
 
     setAuthCookies(res, accessToken, refreshToken);
 
-    res.json({ message: "Login successful" });
+   res.json({
+  message: "Login successful",
+  user: {
+    _id: user._id,
+    username: user.username,
+    email: user.email,
+    role: user.role,
+  },
+});
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -209,7 +225,15 @@ const verifyLoginOTP = async (req, res) => {
 
     setAuthCookies(res, accessToken, refreshToken);
 
-    res.json({ message: "Login successful (OTP)" });
+   res.json({
+  message: "Login successful (OTP)",
+  user: {
+    _id: user._id,
+    username: user.username,
+    email: user.email,
+    role: user.role,
+  },
+});
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -242,10 +266,12 @@ const refreshAccessToken = async (req, res) => {
 
     const newAccessToken = generateAccessToken(user._id);
 
+    const isProd = process.env.NODE_ENV === "production";
     res.cookie("accessToken", newAccessToken, {
       httpOnly: true,
-      secure: true,
-      sameSite: "None",
+      secure: isProd,
+      sameSite: isProd ? "None" : "lax",
+      path: "/",
     });
 
     res.json({ message: "Token refreshed" });
@@ -259,16 +285,19 @@ const refreshAccessToken = async (req, res) => {
 ========================= */
 
 const logoutUser = async (req, res) => {
+  const isProd = process.env.NODE_ENV === "production";
   res.clearCookie("accessToken", {
     httpOnly: true,
-    secure: true,
-    sameSite: "None",
+    secure: isProd,
+    sameSite: isProd ? "None" : "lax",
+    path: "/",
   });
 
   res.clearCookie("refreshToken", {
     httpOnly: true,
-    secure: true,
-    sameSite: "None",
+    secure: isProd,
+    sameSite: isProd ? "None" : "lax",
+    path: "/",
   });
 
   res.json({ message: "Logged out" });
@@ -280,12 +309,12 @@ const logoutUser = async (req, res) => {
 
 const getUserProfile = async (req, res) => {
   const user = await User.findById(req.user.id);
-
-  res.json({
-    _id: user._id,
-    username: user.username,
-    email: user.email,
-  });
+res.json({
+  _id: user._id,
+  username: user.username,
+  email: user.email,
+  role: user.role,
+});
 };
 
 /* =========================

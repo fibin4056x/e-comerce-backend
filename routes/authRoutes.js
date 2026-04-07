@@ -18,6 +18,7 @@ const {
 const {
   validateRegister,
   validateLogin,
+  validateEmail,
   validateOTP
 } = require("../middleware/validateUser");
 
@@ -41,7 +42,7 @@ router.post("/login", validateLogin, loginUser);
 /* =========================
    REQUEST LOGIN OTP
 ========================= */
-router.post("/request-login-otp", validateLogin, requestLoginOTP);
+router.post("/request-login-otp", validateEmail, requestLoginOTP);
 
 /* =========================
    VERIFY LOGIN OTP

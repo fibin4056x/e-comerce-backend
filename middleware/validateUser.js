@@ -34,9 +34,8 @@ const validateRegister = [
     .notEmpty().withMessage("Username is required")
     .isLength({ min: 4, max: 30 })
     .withMessage("Username must be 4–30 characters")
-    .isAlphanumeric()
-    .withMessage("Username can only contain letters and numbers")
-    ,
+    .matches(/^[A-Za-z0-9_]+$/)
+    .withMessage("Username can only contain letters, numbers, and underscores"),
 
   body("email")
     .trim()
@@ -54,6 +53,16 @@ const validateRegister = [
     .withMessage("Password must contain at least one number")
     .matches(/[!@#$%^&*]/)
     .withMessage("Password must contain a special character"),
+
+  handleValidation
+];
+
+const validateEmail = [
+  body("email")
+    .trim()
+    .normalizeEmail()
+    .notEmpty().withMessage("Email is required")
+    .isEmail().withMessage("Invalid email format"),
 
   handleValidation
 ];
@@ -101,5 +110,6 @@ const validateOTP = [
 module.exports = {
   validateRegister,
   validateLogin,
+  validateEmail,
   validateOTP
 };

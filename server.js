@@ -8,15 +8,18 @@ const adminUserRoutes = require("./routes/adminUserRoutes");
 
 
 const app = express();
-
 connectDB();
-
-const allowedOrigins = [
+const defaultAllowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
-  "https://e-comercer-frontend.vercel.app"
+  "https://e-comercer-frontend.vercel.app",
 ];
+const allowedOrigins = process.env.CLIENT_ORIGINS
+  ? process.env.CLIENT_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)
+  : defaultAllowedOrigins;
 
+// If behind a proxy (Render/Heroku/Nginx), this helps secure cookies work correctly.
+app.set("trust proxy", 1);
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
@@ -27,9 +30,10 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json());
-app.use(cookieParser());
 
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 app.use("/api/products", require("./routes/productRoutes"));
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/cart", require("./routes/cartRoutes"));
