@@ -27,7 +27,7 @@ const getAllUsers = async (req, res) => {
 
     const [users, totalUsers] = await Promise.all([
       User.find()
-        .select("username email role isBanned createdAt")
+        .select("username email role isBanned createdAt profileImage")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)

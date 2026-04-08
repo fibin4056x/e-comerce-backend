@@ -24,17 +24,47 @@ if (missingEnv.length > 0) {
    CORS CONFIG
 ========================= */
 
-const defaultAllowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "https://e-comercer-frontend.vercel.app",
-];
+const normalizeOrigin = (origin) =>
+  String(origin || "")
+    .trim()
+    .replace(/\/+$/, "");
 
-const allowedOrigins = process.env.CLIENT_ORIGINS
-  ? process.env.CLIENT_ORIGINS.split(",")
-      .map((origin) => origin.trim())
-      .filter(Boolean)
-  : defaultAllowedOrigins;
+const defaultAllowedOrigins = ["https://e-comercer-frontend.vercel.app"];
+
+const allowedOrigins = new Set(
+  (process.env.CLIENT_ORIGINS
+    ? process.env.CLIENT_ORIGINS.split(",")
+    : defaultAllowedOrigins
+  )
+    .map(normalizeOrigin)
+    .filter(Boolean)
+);
+
+const localhostOriginPattern =
+  /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::\d{1,5})?$/i;
+
+const isAllowedOrigin = (origin) => {
+  const normalizedOrigin = normalizeOrigin(origin);
+
+  return (
+    localhostOriginPattern.test(normalizedOrigin) ||
+    allowedOrigins.has(normalizedOrigin)
+  );
+};
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || isAllowedOrigin(origin)) {
+      return callback(null, true);
+    }
+
+    const error = new Error(`Origin not allowed by CORS: ${origin}`);
+    error.statusCode = 403;
+    return callback(error);
+  },
+  credentials: true,
+  optionsSuccessStatus: 204,
+};
 
 app.disable("x-powered-by");
 app.set(
@@ -46,21 +76,7 @@ app.set(
       : 0
 );
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-
-      const error = new Error("Origin not allowed by CORS");
-      error.statusCode = 403;
-      return callback(error);
-    },
-    credentials: true,
-    optionsSuccessStatus: 204,
-  })
-);
+app.use(cors(corsOptions));
 
 /* =========================
    MIDDLEWARE
@@ -96,10 +112,6 @@ app.use("/api/admin", adminUserRoutes);
 
 app.get("/", (req, res) => {
   res.status(200).json({ message: "API running" });
-});
-
-app.get("/", (req, res) => {
-  res.send("🚀 API Running");
 });
 
 /* =========================
