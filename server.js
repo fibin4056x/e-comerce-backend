@@ -153,6 +153,7 @@ app.use((err, req, res, next) => {
 
 const PORT = Number(process.env.PORT) || 5000;
 let server;
+const isProduction = process.env.NODE_ENV === "production";
 
 const shutdown = async (signal) => {
   console.log(`Received ${signal}. Shutting down gracefully...`);
@@ -187,11 +188,17 @@ process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("unhandledRejection", (reason) => {
   console.error("Unhandled promise rejection:", reason);
-  shutdown("unhandledRejection");
+
+  if (isProduction) {
+    shutdown("unhandledRejection");
+  }
 });
 process.on("uncaughtException", (error) => {
   console.error("Uncaught exception:", error);
-  process.exit(1);
+
+  if (isProduction) {
+    process.exit(1);
+  }
 });
 
 startServer().catch((error) => {

@@ -134,6 +134,60 @@ const validateReviewInput = (rating, comment) => {
   return { numericRating, normalizedComment };
 };
 
+const isAdminUser = (user) => String(user?.role || "").trim().toLowerCase() === "admin";
+
+const getVariantStock = (variant) => Number(variant?.stock) || 0;
+
+const sanitizeVariantForViewer = (variant, showAdminFields) => {
+  const normalizedVariant =
+    typeof variant?.toObject === "function" ? variant.toObject() : { ...variant };
+
+  if (showAdminFields) {
+    return normalizedVariant;
+  }
+
+  return {
+    _id: normalizedVariant._id,
+    size: normalizedVariant.size,
+    color: normalizedVariant.color,
+    available: getVariantStock(normalizedVariant) > 0,
+  };
+};
+
+const sanitizeProductForViewer = (product, user) => {
+  const normalizedProduct =
+    typeof product?.toObject === "function" ? product.toObject() : { ...product };
+  const showAdminFields = isAdminUser(user);
+  const variants = Array.isArray(normalizedProduct.variants)
+    ? normalizedProduct.variants.map((variant) =>
+        sanitizeVariantForViewer(variant, showAdminFields)
+      )
+    : [];
+
+  if (showAdminFields) {
+    return {
+      ...normalizedProduct,
+      variants,
+    };
+  }
+
+  const totalStock = Array.isArray(normalizedProduct.variants)
+    ? normalizedProduct.variants.reduce(
+        (total, variant) => total + getVariantStock(variant),
+        0
+      )
+    : 0;
+
+  return {
+    ...normalizedProduct,
+    price: null,
+    originalPrice: null,
+    discount: null,
+    variants,
+    inStock: totalStock > 0,
+  };
+};
+
 const getProducts = async (req, res) => {
   try {
     const { category } = req.query;
@@ -155,7 +209,7 @@ const getProducts = async (req, res) => {
       .lean();
 
     return res.status(200).json({
-      products,
+      products: products.map((product) => sanitizeProductForViewer(product, req.user)),
       page: pageNumber,
       pages: Math.ceil(totalProducts / pageSize),
       totalProducts,
@@ -176,7 +230,7 @@ const getProductsById = async (req, res) => {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    return res.json(product);
+    return res.json(sanitizeProductForViewer(product, req.user));
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }

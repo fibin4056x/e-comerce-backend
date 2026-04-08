@@ -13,7 +13,7 @@ const {
   updateProductReview,
   deleteProductReview,
 } = require("../controllers/productControllerV2");
-const { protect, admin } = require("../middleware/authMiddleware");
+const { protect, admin, attachUserIfPresent } = require("../middleware/authMiddleware");
 const { apiLimiter } = require("../middleware/rateLimiter");
 
 const asyncHandler = (fn) => (req, res, next) =>
@@ -27,8 +27,8 @@ const validateObjectId = (param) => (req, res, next) => {
   next();
 };
 
-router.get("/", apiLimiter, asyncHandler(getProducts));
-router.get("/:id", validateObjectId("id"), apiLimiter, asyncHandler(getProductsById));
+router.get("/", attachUserIfPresent, apiLimiter, asyncHandler(getProducts));
+router.get("/:id", attachUserIfPresent, validateObjectId("id"), apiLimiter, asyncHandler(getProductsById));
 
 router.post(
   "/",

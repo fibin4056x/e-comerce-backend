@@ -6,11 +6,7 @@ const cloudinary = require("../config/cloudinary");
 
 const appRoot = path.resolve(__dirname, "..");
 const uploadsRoot = path.join(appRoot, "uploads");
-const hasCloudinaryConfig = Boolean(
-  process.env.CLOUDINARY_NAME &&
-    process.env.CLOUDINARY_API_KEY &&
-    process.env.CLOUDINARY_SECRET
-);
+const hasCloudinaryConfig = Boolean(cloudinary.hasCloudinaryConfig);
 
 const resolveFolder = (req) => {
   if (req.baseUrl?.includes("/auth")) {
