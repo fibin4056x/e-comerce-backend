@@ -11,14 +11,42 @@ const adminUserRoutes = require("./routes/adminUserRoutesV2");
 
 const app = express();
 
-const requiredEnv = ["MONGO_URI", "JWT_SECRET", "JWT_REFRESH_SECRET"];
-const missingEnv = requiredEnv.filter((key) => !process.env[key]);
+const getDbHealthState = () => {
+  const readyState = mongoose.connection.readyState;
 
-if (missingEnv.length > 0) {
-  throw new Error(
-    `Missing required environment variables: ${missingEnv.join(", ")}`
-  );
-}
+  if (readyState === 1) {
+    return "connected";
+  }
+
+  if (readyState === 2) {
+    return "connecting";
+  }
+
+  if (readyState === 3) {
+    return "disconnecting";
+  }
+
+  return "disconnected";
+};
+
+const validateRequiredEnv = () => {
+  const requiredEnv = [
+    "MONGO_URI",
+    "JWT_SECRET",
+    "JWT_REFRESH_SECRET",
+    "SMTP_HOST",
+    "SMTP_PORT",
+    "SMTP_USER",
+    "SMTP_PASS",
+  ];
+  const missingEnv = requiredEnv.filter((key) => !process.env[key]);
+
+  if (missingEnv.length > 0) {
+    throw new Error(
+      `Missing required environment variables: ${missingEnv.join(", ")}`
+    );
+  }
+};
 
 /* =========================
    CORS CONFIG
@@ -95,6 +123,8 @@ app.get("/health", (req, res) => {
   res.status(200).json({
     status: "ok",
     uptime: process.uptime(),
+    database: getDbHealthState(),
+    timestamp: new Date().toISOString(),
   });
 });
 
@@ -166,6 +196,7 @@ app.use((err, req, res, next) => {
 const PORT = Number(process.env.PORT) || 5000;
 let server;
 const isProduction = process.env.NODE_ENV === "production";
+let processHandlersRegistered = false;
 
 const shutdown = async (signal) => {
   console.log(`Received ${signal}. Shutting down gracefully...`);
@@ -189,31 +220,56 @@ const shutdown = async (signal) => {
 };
 
 const startServer = async () => {
+  if (server) {
+    return server;
+  }
+
+  validateRequiredEnv();
   await connectDB();
 
   server = app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });
+
+  return server;
 };
 
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("unhandledRejection", (reason) => {
-  console.error("Unhandled promise rejection:", reason);
-
-  if (isProduction) {
-    shutdown("unhandledRejection");
+const registerProcessHandlers = () => {
+  if (processHandlersRegistered) {
+    return;
   }
-});
-process.on("uncaughtException", (error) => {
-  console.error("Uncaught exception:", error);
 
-  if (isProduction) {
+  processHandlersRegistered = true;
+
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("unhandledRejection", (reason) => {
+    console.error("Unhandled promise rejection:", reason);
+
+    if (isProduction) {
+      shutdown("unhandledRejection");
+    }
+  });
+  process.on("uncaughtException", (error) => {
+    console.error("Uncaught exception:", error);
+
+    if (isProduction) {
+      process.exit(1);
+    }
+  });
+};
+
+if (require.main === module) {
+  registerProcessHandlers();
+
+  startServer().catch((error) => {
+    console.error("Failed to start server:", error);
     process.exit(1);
-  }
-});
+  });
+}
 
-startServer().catch((error) => {
-  console.error("Failed to start server:", error);
-  process.exit(1);
-});
+module.exports = {
+  app,
+  startServer,
+  shutdown,
+};

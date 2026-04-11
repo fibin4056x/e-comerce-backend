@@ -2,6 +2,20 @@ const Product = require("../models/productModel");
 const cloudinary = require("../config/cloudinary");
 
 /* ==========================================
+   HELPER: extract correct public_id
+========================================== */
+const extractPublicId = (url) => {
+  if (!url) return null;
+
+  const parts = url.split("/upload/");
+  if (!parts[1]) return null;
+
+  return parts[1]
+    .replace(/^v\d+\//, "") // remove version
+    .replace(/\.[^/.]+$/, ""); // remove extension
+};
+
+/* ==========================================
    GET ALL PRODUCTS
 ========================================== */
 const getProducts = async (req, res) => {
@@ -28,7 +42,6 @@ const getProducts = async (req, res) => {
       pages: Math.ceil(totalproducts / pageSize),
       totalproducts,
     });
-
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -47,14 +60,13 @@ const getProductsbyId = async (req, res) => {
     }
 
     res.json(product);
-
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
 /* ==========================================
-   CREATE PRODUCT (Cloudinary)
+   CREATE PRODUCT
 ========================================== */
 const createProduct = async (req, res) => {
   try {
@@ -86,7 +98,6 @@ const createProduct = async (req, res) => {
 
     const saved = await product.save();
     res.status(201).json(saved);
-
   } catch (error) {
     console.error("CREATE ERROR:", error);
     res.status(500).json({ message: "Server Error" });
@@ -94,7 +105,7 @@ const createProduct = async (req, res) => {
 };
 
 /* ==========================================
-   UPDATE PRODUCT (Cloudinary)
+   UPDATE PRODUCT (FIXED)
 ========================================== */
 const updateProduct = async (req, res) => {
   try {
@@ -104,17 +115,20 @@ const updateProduct = async (req, res) => {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    let imageUrls = product.images;
+    const oldImages = product.images || [];
+    let newImages = oldImages;
 
+    // 👉 Upload new images FIRST
     if (req.files && req.files.length > 0) {
-      imageUrls = req.files.map((file) => file.path);
+      newImages = req.files.map((file) => file.path);
     }
 
-    let variants = [];
+    let variants = product.variants;
     if (req.body.variants) {
       variants = JSON.parse(req.body.variants);
     }
 
+    // 👉 Update fields
     product.name = req.body.name || product.name;
     product.brand = req.body.brand || product.brand;
     product.category = req.body.category || product.category;
@@ -127,11 +141,23 @@ const updateProduct = async (req, res) => {
     product.variants = variants;
     product.isFeatured = req.body.isFeatured === "true";
     product.isNewArrival = req.body.isNewArrival === "true";
-    product.images = imageUrls;
+    product.images = newImages;
 
     const updated = await product.save();
-    res.json(updated);
 
+    // 👉 SAFE DELETE OLD IMAGES
+    if (req.files && req.files.length > 0) {
+      for (const img of oldImages) {
+        if (!newImages.includes(img)) {
+          const publicId = extractPublicId(img);
+          if (publicId) {
+            await cloudinary.uploader.destroy(publicId);
+          }
+        }
+      }
+    }
+
+    res.json(updated);
   } catch (error) {
     console.error("UPDATE ERROR:", error);
     res.status(500).json({ message: "Server Error" });
@@ -139,7 +165,7 @@ const updateProduct = async (req, res) => {
 };
 
 /* ==========================================
-   DELETE PRODUCT (Cloudinary cleanup)
+   DELETE PRODUCT (FIXED)
 ========================================== */
 const deleteProduct = async (req, res) => {
   try {
@@ -149,14 +175,12 @@ const deleteProduct = async (req, res) => {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    // 🔹 delete images from cloudinary
+    // 👉 Correct delete
     if (product.images && product.images.length > 0) {
       for (const img of product.images) {
-        try {
-          const publicId = img.split("/").pop().split(".")[0];
-          await cloudinary.uploader.destroy(`products/${publicId}`);
-        } catch (err) {
-          console.error("Cloudinary delete error:", err);
+        const publicId = extractPublicId(img);
+        if (publicId) {
+          await cloudinary.uploader.destroy(publicId);
         }
       }
     }
@@ -164,7 +188,6 @@ const deleteProduct = async (req, res) => {
     await product.deleteOne();
 
     res.json({ message: "Product removed successfully" });
-
   } catch (error) {
     console.error("DELETE ERROR:", error);
     res.status(500).json({ message: error.message });
@@ -172,8 +195,9 @@ const deleteProduct = async (req, res) => {
 };
 
 /* ==========================================
-   REVIEW HELPERS
+   REVIEW FUNCTIONS (unchanged)
 ========================================== */
+
 const calculateRating = (product) => {
   product.numReviews = product.reviews.length;
 
@@ -184,9 +208,6 @@ const calculateRating = (product) => {
         product.reviews.length;
 };
 
-/* ==========================================
-   ADD REVIEW
-========================================== */
 const addProductReview = async (req, res) => {
   try {
     const { rating, comment } = req.body;
@@ -214,15 +235,11 @@ const addProductReview = async (req, res) => {
 
     await product.save();
     res.status(201).json({ message: "Review added" });
-
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-/* ==========================================
-   UPDATE REVIEW
-========================================== */
 const updateProductReview = async (req, res) => {
   try {
     const { rating, comment } = req.body;
@@ -243,15 +260,11 @@ const updateProductReview = async (req, res) => {
     await product.save();
 
     res.json({ message: "Review updated" });
-
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-/* ==========================================
-   DELETE REVIEW
-========================================== */
 const deleteProductReview = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -265,7 +278,6 @@ const deleteProductReview = async (req, res) => {
     await product.save();
 
     res.json({ message: "Review removed" });
-
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
