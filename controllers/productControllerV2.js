@@ -1,4 +1,6 @@
 const Product = require("../models/productModel");
+const Cart = require("../models/cartModel");
+const Wishlist = require("../models/wishlistModel");
 const cloudinary = require("../config/cloudinary");
 const {
   destroyStoredAsset,
@@ -49,15 +51,23 @@ const parseVariants = (rawVariants) => {
     throw new Error("Invalid variants format");
   }
 
+  const seenVariants = new Set();
+
   return parsed.map((variant) => {
     const size = String(variant?.size || "").trim();
     const color = String(variant?.color || "").trim();
     const stock = Number(variant?.stock);
+    const variantKey = `${size.toLowerCase()}::${color.toLowerCase()}`;
 
     if (!size || !color || !Number.isInteger(stock) || stock < 0) {
       throw new Error("Each variant must include valid size, color, and stock");
     }
 
+    if (seenVariants.has(variantKey)) {
+      throw new Error("Duplicate variant detected");
+    }
+
+    seenVariants.add(variantKey);
     return { size, color, stock };
   });
 };
@@ -134,42 +144,17 @@ const validateReviewInput = (rating, comment) => {
   return { numericRating, normalizedComment };
 };
 
-const isAdminUser = (user) => String(user?.role || "").trim().toLowerCase() === "admin";
-
 const getVariantStock = (variant) => Number(variant?.stock) || 0;
 
-const sanitizeVariantForViewer = (variant, showAdminFields) => {
-  const normalizedVariant =
-    typeof variant?.toObject === "function" ? variant.toObject() : { ...variant };
+const sanitizeVariantForViewer = (variant) =>
+  typeof variant?.toObject === "function" ? variant.toObject() : { ...variant };
 
-  if (showAdminFields) {
-    return normalizedVariant;
-  }
-
-  return {
-    _id: normalizedVariant._id,
-    size: normalizedVariant.size,
-    color: normalizedVariant.color,
-    available: getVariantStock(normalizedVariant) > 0,
-  };
-};
-
-const sanitizeProductForViewer = (product, user) => {
+const sanitizeProductForViewer = (product) => {
   const normalizedProduct =
     typeof product?.toObject === "function" ? product.toObject() : { ...product };
-  const showAdminFields = isAdminUser(user);
   const variants = Array.isArray(normalizedProduct.variants)
-    ? normalizedProduct.variants.map((variant) =>
-        sanitizeVariantForViewer(variant, showAdminFields)
-      )
+    ? normalizedProduct.variants.map((variant) => sanitizeVariantForViewer(variant))
     : [];
-
-  if (showAdminFields) {
-    return {
-      ...normalizedProduct,
-      variants,
-    };
-  }
 
   const totalStock = Array.isArray(normalizedProduct.variants)
     ? normalizedProduct.variants.reduce(
@@ -180,13 +165,59 @@ const sanitizeProductForViewer = (product, user) => {
 
   return {
     ...normalizedProduct,
-    price: null,
-    originalPrice: null,
-    discount: null,
     variants,
     inStock: totalStock > 0,
   };
 };
+
+const cleanupUploadedProductAssets = async (files = []) => {
+  if (!Array.isArray(files) || files.length === 0) {
+    return;
+  }
+
+  await Promise.allSettled(
+    files.map((file) => destroyStoredAsset(cloudinary, file?.path).catch(() => false))
+  );
+};
+
+const getProductErrorStatus = (error) => {
+  if (error?.statusCode) {
+    return error.statusCode;
+  }
+
+  if (["ValidationError", "CastError", "SyntaxError"].includes(error?.name)) {
+    return 400;
+  }
+
+  if (
+    /^(Invalid|Each variant|Duplicate variant|Original price|Review comment|Rating)/i.test(
+      String(error?.message || "")
+    )
+  ) {
+    return 400;
+  }
+
+  return 500;
+};
+
+const listProductFields = [
+  "name",
+  "brand",
+  "category",
+  "type",
+  "description",
+  "price",
+  "originalPrice",
+  "discount",
+  "images",
+  "variants",
+  "rating",
+  "numReviews",
+  "isFeatured",
+  "isNewArrival",
+  "createdAt",
+  "updatedAt",
+].join(" ");
 
 const getProducts = async (req, res) => {
   try {
@@ -203,13 +234,14 @@ const getProducts = async (req, res) => {
     const totalProducts = await Product.countDocuments(filter);
 
     const products = await Product.find(filter)
+      .select(listProductFields)
       .sort({ createdAt: -1 })
       .limit(pageSize)
       .skip(pageSize * (pageNumber - 1))
       .lean();
 
     return res.status(200).json({
-      products: products.map((product) => sanitizeProductForViewer(product, req.user)),
+      products: products.map((product) => sanitizeProductForViewer(product)),
       page: pageNumber,
       pages: Math.ceil(totalProducts / pageSize),
       totalProducts,
@@ -230,7 +262,7 @@ const getProductsById = async (req, res) => {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    return res.json(sanitizeProductForViewer(product, req.user));
+    return res.json(sanitizeProductForViewer(product));
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
@@ -249,7 +281,11 @@ const createProduct = async (req, res) => {
     const saved = await product.save();
     return res.status(201).json(saved);
   } catch (error) {
-    return res.status(400).json({ message: error.message || "Server Error" });
+    await cleanupUploadedProductAssets(req.files);
+
+    return res.status(getProductErrorStatus(error)).json({
+      message: error.message || "Server Error",
+    });
   }
 };
 
@@ -262,23 +298,34 @@ const updateProduct = async (req, res) => {
     }
 
     const payload = buildProductPayload(req.body, { partial: true });
+    const previousImages = [...(product.images || [])];
+    const nextImages = req.files?.map((file) => toPublicAssetPath(file.path)) || [];
 
-    if (req.files?.length) {
-      await Promise.all(
-        (product.images || []).map((image) =>
-          destroyStoredAsset(cloudinary, image).catch(() => false)
-        )
-      );
-
-      payload.images = req.files.map((file) => toPublicAssetPath(file.path));
+    if (nextImages.length > 0) {
+      payload.images = nextImages;
     }
 
     Object.assign(product, payload);
 
     const updated = await product.save();
+
+    if (nextImages.length > 0) {
+      await Promise.allSettled(
+        previousImages.map((image) =>
+          destroyStoredAsset(cloudinary, image, { skipIfExternal: true }).catch(
+            () => false
+          )
+        )
+      );
+    }
+
     return res.json(updated);
   } catch (error) {
-    return res.status(400).json({ message: error.message || "Server Error" });
+    await cleanupUploadedProductAssets(req.files);
+
+    return res.status(getProductErrorStatus(error)).json({
+      message: error.message || "Server Error",
+    });
   }
 };
 
@@ -290,13 +337,22 @@ const deleteProduct = async (req, res) => {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    await Promise.all(
-      (product.images || []).map((image) =>
-        destroyStoredAsset(cloudinary, image).catch(() => false)
-      )
-    );
-
     await product.deleteOne();
+    await Promise.allSettled([
+      ...(product.images || []).map((image) =>
+        destroyStoredAsset(cloudinary, image, { skipIfExternal: true }).catch(
+          () => false
+        )
+      ),
+      Cart.updateMany(
+        { "items.product": product._id },
+        { $pull: { items: { product: product._id } } }
+      ),
+      Wishlist.updateMany(
+        { products: product._id },
+        { $pull: { products: product._id } }
+      ),
+    ]);
 
     return res.json({ message: "Product removed successfully" });
   } catch (error) {
