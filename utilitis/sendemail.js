@@ -2,9 +2,19 @@ const nodemailer = require("nodemailer");
 
 const getTransporter = () => {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
+  const missingEnv = [
+    ["SMTP_HOST", SMTP_HOST],
+    ["SMTP_PORT", SMTP_PORT],
+    ["SMTP_USER", SMTP_USER],
+    ["SMTP_PASS", SMTP_PASS],
+  ]
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
 
-  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) {
-    const error = new Error("SMTP configuration is missing");
+  if (missingEnv.length > 0) {
+    const error = new Error(
+      `SMTP configuration is missing: ${missingEnv.join(", ")}`
+    );
     error.statusCode = 500;
     throw error;
   }

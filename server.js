@@ -30,20 +30,21 @@ const getDbHealthState = () => {
 };
 
 const validateRequiredEnv = () => {
-  const requiredEnv = [
-    "MONGO_URI",
-    "JWT_SECRET",
-    "JWT_REFRESH_SECRET",
-    "SMTP_HOST",
-    "SMTP_PORT",
-    "SMTP_USER",
-    "SMTP_PASS",
-  ];
+  const requiredEnv = ["MONGO_URI", "JWT_SECRET", "JWT_REFRESH_SECRET"];
   const missingEnv = requiredEnv.filter((key) => !process.env[key]);
 
   if (missingEnv.length > 0) {
     throw new Error(
       `Missing required environment variables: ${missingEnv.join(", ")}`
+    );
+  }
+
+  const smtpEnv = ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS"];
+  const missingSmtpEnv = smtpEnv.filter((key) => !process.env[key]);
+
+  if (missingSmtpEnv.length > 0) {
+    console.warn(
+      `SMTP configuration is incomplete. Email-based OTP routes will fail until these variables are set: ${missingSmtpEnv.join(", ")}`
     );
   }
 };
