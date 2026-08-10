@@ -45,7 +45,15 @@ const sendEmail = async (to, subject, text) => {
       text,
     });
 
+    return info;
   } catch (error) {
+    console.error("Nodemailer Email Error:", {
+      code: error.code,
+      command: error.command,
+      responseCode: error.responseCode,
+      message: error.message,
+    });
+
     const sendError = new Error("Email sending failed");
     sendError.statusCode = error.statusCode || 502;
     throw sendError;
